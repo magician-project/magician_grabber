@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="MagicianGrabber" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="./magician_grabber" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+				<Linker>
+					<Add option="-pthread" />
+					<Add option="-lm" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="./magician_grabber" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="`pkg-config --cflags aravis-0.10`" />
+			<Add option="`pkg-config --libs aravis-0.10 `" />
+			<Add option="-D_GNU_SOURCE" />
+		</Compiler>
+		<Linker>
+			<Add option="`pkg-config --libs aravis-0.10 `" />
+			<Add option="-lpthread" />
+			<Add option="-lm" />
+		</Linker>
+		<Unit filename="arduinoSensor.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="arduinoSensor.h" />
+		<Unit filename="atiForceSensor.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="atiForceSensor.h" />
+		<Unit filename="common.h" />
+		<Unit filename="gigeCameraSensor.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="gigeCameraSensor.h" />
+		<Unit filename="multimodalgrabber.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Extensions>
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
