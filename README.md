@@ -1,4 +1,6 @@
-# magician_grabber
+# Magician Unified Data Grabber
+
+[https://github.com/magician-project/magician_grabber/blob/main/doc/logo.jpg?raw=true]
 
 
 ## Usage:
