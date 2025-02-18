@@ -1,6 +1,7 @@
 # Magician Unified Data Grabber
 
-[https://github.com/magician-project/magician_grabber/blob/main/doc/logo.jpg?raw=true]
+  <img src="https://github.com/magician-project/magician_grabber/blob/main/doc/logo.jpg?raw=true" width=300/>
+[]
 
 
 ## Usage:
