@@ -11,6 +11,7 @@ typedef struct
 
 } GlobalConfig;
 
+#define USE_SIMPLE_FRAME_APPEND 0
 
 #define EPOCH_YEAR_IN_TM_YEAR 1900
 

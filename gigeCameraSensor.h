@@ -17,6 +17,7 @@ typedef struct
     char csv_name[128];
     unsigned int width;
     unsigned int height;
+
     unsigned int exposure; // 0 means no setting
     double       gain;
     double       blackLevel;
@@ -25,6 +26,7 @@ typedef struct
 
     FILE *csv_file;
     char * keep_running;
+    char running;
 
     unsigned long framesCaptured;
     unsigned long n_completed_buffers;
@@ -34,6 +36,8 @@ typedef struct
     void * camera;
     void * stream;
     void * error;
+
+    void * camera_shm_stream;
 
 } GiGECameraConfig;
 

@@ -72,6 +72,7 @@ int ati_startStream(ATINetFTConfig * context)
 
 int ati_stopStream(ATINetFTConfig * context)
 {
+    context->running = 1;
     close(context->socketHandle);
     return 0;
 }
@@ -81,6 +82,9 @@ void *atinetft_thread(void *arg)
 {
     ATINetFTConfig *config = (ATINetFTConfig *)arg;
     GlobalConfig *cfg = config->global;
+
+
+    char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
 
     //byte request[8];			/* The request data sent to the Net F/T. */
 	RESPONSE resp;				/* The structured response received from the Net F/T. */
@@ -101,13 +105,18 @@ void *atinetft_thread(void *arg)
      }
      fprintf(config->csv_file,"timestamp,fX,fY,fZ,tX,tY,tZ\n");
 
-     while (*config->keep_running)
+
+   unsigned long atiStartTime = GetTickCountMicroseconds();
+
+   while (*config->keep_running)
    {
+    config->running = 1;
+
 	/* Receiving the response. */
 	recv(config->socketHandle, response, 36, 0 );
 	unsigned long receptionTime = GetTickCountMicroseconds();
 	resp.rdt_sequence = ntohl(*(uint32*)&response[0]);
-	resp.ft_sequence = ntohl(*(uint32*)&response[4]);
+	resp.ft_sequence  = ntohl(*(uint32*)&response[4]);
 	resp.status = ntohl(*(uint32*)&response[8]);
 	for( i = 0; i < 6; i++ ) { resp.FTData[i] = ntohl(*(int32*)&response[12 + i * 4]); }
 
@@ -117,15 +126,20 @@ void *atinetft_thread(void *arg)
 
          // Placeholder for actual force sensor data acquisition
         fprintf(config->csv_file, "%lu,",receptionTime);
-        fprintf(config->csv_file, "%f,",(double) resp.FTData[0]/FORCE_RATIO);
-        fprintf(config->csv_file, "%f,",(double) resp.FTData[1]/FORCE_RATIO);
-        fprintf(config->csv_file, "%f,",(double) resp.FTData[2]/FORCE_RATIO);
-        fprintf(config->csv_file, "%f,",(double) resp.FTData[3]/TORQUE_RATIO);
-        fprintf(config->csv_file, "%f,",(double) resp.FTData[4]/TORQUE_RATIO);
+        fprintf(config->csv_file, "%f,", (double) resp.FTData[0]/FORCE_RATIO);
+        fprintf(config->csv_file, "%f,", (double) resp.FTData[1]/FORCE_RATIO);
+        fprintf(config->csv_file, "%f,", (double) resp.FTData[2]/FORCE_RATIO);
+        fprintf(config->csv_file, "%f,", (double) resp.FTData[3]/TORQUE_RATIO);
+        fprintf(config->csv_file, "%f,", (double) resp.FTData[4]/TORQUE_RATIO);
         fprintf(config->csv_file, "%f\n",(double) resp.FTData[5]/TORQUE_RATIO);
         fflush(config->csv_file);
 
         config->receivedDataFrames+=1;
+
+        double timeElapsedInSeconds = (double) ((double) (receptionTime-atiStartTime)/(double) 1000000.0);
+        double computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds;
+        config->Hz = (float) computeRate;
+        //usleep(100);
      }
 
      fclose(config->csv_file);

@@ -56,9 +56,17 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="gigeCameraSensor.h" />
-		<Unit filename="multimodalgrabber.c">
+		<Unit filename="imageStreamer.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="imageStreamer.h" />
+		<Unit filename="multiModalGrabber.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="sharedMemoryVideoBuffers.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="sharedMemoryVideoBuffers.h" />
 		<Extensions>
 			<lib_finder disable_auto="1" />
 		</Extensions>

@@ -9,6 +9,7 @@
 #include <signal.h>
 
 #include "gigeCameraSensor.h"
+#include "imageStreamer.h"
 
 volatile sig_atomic_t termination_requested = 0;
 
@@ -16,17 +17,6 @@ void sigterm_handler(int signum)
 {
     termination_requested = 1;
 }
-
-struct Image
-{
-    const unsigned char * pixels;
-    unsigned int width;
-    unsigned int height;
-    unsigned int channels;
-    unsigned int bitsperpixel;
-    unsigned int image_size;
-    unsigned int timestamp;
-};
 
 struct Settings
 {
@@ -62,7 +52,7 @@ int writeSettings(const char * filename,struct Settings * settings)
     return 0;
 }
 
-unsigned int simplePowPPM(unsigned int base,unsigned int exp)
+unsigned int simplePowPPMG(unsigned int base,unsigned int exp)
 {
     if (exp==0) return 1;
     unsigned int retres=base;
@@ -74,7 +64,7 @@ unsigned int simplePowPPM(unsigned int base,unsigned int exp)
     return retres;
 }
 
-int WritePPM(const char * filename,struct Image * pic)
+int WritePPMG(const char * filename,struct Image * pic)
 {
     //fprintf(stderr,"saveRawImageToFile(%s) called\n",filename);
     if (pic==0)
@@ -112,7 +102,7 @@ int WritePPM(const char * filename,struct Image * pic)
             return 1;
         }
 
-        fprintf(fd, "%d %d\n%u\n", pic->width, pic->height, simplePowPPM(2,pic->bitsperpixel)-1);
+        fprintf(fd, "%d %d\n%u\n", pic->width, pic->height, simplePowPPMG(2,pic->bitsperpixel)-1);
 
         float tmp_n = (float) pic->bitsperpixel/ 8;
         tmp_n = tmp_n *  pic->width * pic->height * pic->channels ;
@@ -144,11 +134,10 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
     //guint64 n_completed_buffers=0, n_failures=0, n_underruns=0;
 
-
     GlobalConfig *cfg = context->global;
 
 
-    unsigned int i=0;
+    //unsigned int i=0;
     unsigned int ARV_VIEWER_N_BUFFERS=10;
     struct Settings settings= {0};
     struct Image dataAsImage= {0};
@@ -194,6 +183,14 @@ int gigecamera_startStream(GiGECameraConfig * context)
             /* Create the stream object without callback */
             stream = arv_camera_create_stream (camera, NULL, NULL, NULL, &error);
             context->stream = (void*) stream;
+
+            /*
+            g_object_set (stream,
+                      "packet-timeout", 3 * 1000,
+                      "frame-retention", 25 * 1000,
+                      "packet-request-ratio", 0.75,
+                      NULL);*/
+
         }
 
         if (ARV_IS_STREAM (stream))
@@ -256,19 +253,19 @@ int gigecamera_startStream(GiGECameraConfig * context)
                     arv_camera_set_region(camera,0,0,dataAsImage.width,dataAsImage.height,NULL); //Use full sensor area
                 }
 
-                const void *data = NULL;
+                //const void *data = NULL;
                 char filename[1025]= {0};
-                unsigned int frameNumber = 0;
-                unsigned int brokenFrameNumber = 0;
-                ArvBuffer *buffer;
+                //unsigned int frameNumber = 0;
+                //unsigned int brokenFrameNumber = 0;
+                //ArvBuffer *buffer;
 
-                snprintf(filename,1024,"%s/info.json",cfg->outputDirectory);
+                snprintf(filename,1024,"%.512s/info.json",cfg->outputDirectory);
                 writeSettings(filename,&settings);
 
-                unsigned long startTime = GetTickCountMicroseconds();
+                //unsigned long startTime = GetTickCountMicroseconds();
 
-                unsigned long startGrab, endGrab;
-                unsigned long microsecondsGrab;
+                //unsigned long startGrab, endGrab;
+                //unsigned long microsecondsGrab;
                 unsigned long timeToSleepToWaitFor1Frame = 0;
 
                 if (settings.frameRate!=0.0)
@@ -289,6 +286,8 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
 int gigecamera_stopStream(GiGECameraConfig * context)
 {
+  context->running = 0;
+
   GError *error = NULL;
 
   ArvCamera *camera = context->camera;
@@ -312,12 +311,12 @@ int gigecamera_stopStream(GiGECameraConfig * context)
     }
 
     printf("\n\nDone\n");
-    printf("Summary : Ok %lu/Fail %lu/Under %lu    \r",context->n_completed_buffers,context->n_failures,context->n_underruns);
+    printf("Camera Summary : Ok %lu/Fail %lu/Under %lu    \n", context->n_completed_buffers, context->n_failures, context->n_underruns);
 
     if (context->exposure!=0)
     {
-        printf("Exposure time was %u",context->exposure);
-        printf("This is equivalent to %0.2f FPS",(float) 1000000.0/context->exposure);
+        printf("Exposure time was %u\n",context->exposure);
+        printf("This is equivalent to %0.2f FPS\n",(float) 1000000.0/context->exposure);
     }
 
     context->camera=NULL;
@@ -334,18 +333,27 @@ void *gigecamera_thread(void *arg)
 
     gigecamera_startStream(config);
 
+    char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
+
     char fullCSVOutputPath[2048]={0};
     snprintf(fullCSVOutputPath,2048,"%s/%s",cfg->outputDirectory,config->csv_name);
 
-    config->csv_file = fopen(fullCSVOutputPath, "w");
-    if (!config->csv_file)
+
+    if (enabledFileOutput)
     {
+     config->csv_file = fopen(fullCSVOutputPath, "w");
+     if (!config->csv_file)
+      {
         perror("Failed to open GiGE camera log file");
         return NULL;
+      }
+     fprintf(config->csv_file,"timestamp,frameID\n");
+    } else
+    {
+     config->csv_file = NULL;
     }
-    fprintf(config->csv_file,"timestamp,frameID\n");
 
-    ArvCamera *camera = config->camera;
+    //ArvCamera *camera = config->camera;
     ArvStream *stream = config->stream;
 
     unsigned long startGrab, endGrab;
@@ -353,23 +361,33 @@ void *gigecamera_thread(void *arg)
     unsigned long timeToSleepToWaitFor1Frame = 0;
     ArvBuffer *buffer = NULL;
 
-    char forceDims = 0;
     char refreshDimsOnEachFrame = 1;
 
     const void *data = NULL;
-    char filename[1025]= {0};
+    char filename[2048]= {0};
     unsigned int frameNumber = 0;
     unsigned int brokenFrameNumber = 0;
 
     unsigned int i=0;
-    unsigned int ARV_VIEWER_N_BUFFERS=10;
+    //unsigned int ARV_VIEWER_N_BUFFERS=10;
     struct Settings settings= {0};
     struct Image dataAsImage= {0};
+    dataAsImage.width  = config->width;
+    dataAsImage.height = config->height;
 
 
     unsigned long startTime = GetTickCountMicroseconds();
 
-
+    StreamingContext * shm_stream = NULL;
+    if (config->camera_shm_stream!=NULL)
+          {
+            shm_stream = (StreamingContext *) config->camera_shm_stream;
+            if (shm_stream->frame == NULL)
+            {
+              fprintf(stderr,"\nNo video buffer for streaming shm=%p\n",shm_stream);
+              exit(1);
+            }
+          }
 
     while (*config->keep_running)
                   {
@@ -377,6 +395,7 @@ void *gigecamera_thread(void *arg)
                     buffer = arv_stream_pop_buffer (stream);
                     if (ARV_IS_BUFFER(buffer))
                     {
+                        config->running = 1;
                         if (refreshDimsOnEachFrame)
                         {
                             dataAsImage.width        = arv_buffer_get_image_width (buffer);
@@ -399,19 +418,25 @@ void *gigecamera_thread(void *arg)
                             //printf ("Acquired %d×%d buffer\n",dataAsImage.width,dataAsImage.height);
                             unsigned long endTime = GetTickCountMicroseconds();
 
-
                             arv_stream_get_statistics (stream, &config->n_completed_buffers, &config->n_failures, &config->n_underruns);
-                            float frameRate = arv_camera_get_frame_rate (camera, NULL);
+                            //float frameRate = arv_camera_get_frame_rate (camera, NULL);
                             config->actualFrameRate = (double) frameNumber / ((endTime-startTime)/1000000);
                             //printf("\r %u Frames Grabbed (%u dropped) - @ %0.2f FPS (set %0.2f) ",frameNumber,brokenFrameNumber, config->actualFrameRate, frameRate );
                             //printf("Ok %lu/Fail %lu/Under %lu    \r",config->n_completed_buffers,config->n_failures,config->n_underruns);
 
-                            //Dump to accompanying file
-                            fprintf(config->csv_file, "%lu,",GetTickCountMicroseconds());
-                            fprintf(config->csv_file, "%u\n",frameNumber);
 
-                            snprintf(filename,1024,"%s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
-                            WritePPM(filename,&dataAsImage);
+                            if (shm_stream!=NULL)
+                                       { stream_image(shm_stream->frame,&dataAsImage); }
+
+                            if (enabledFileOutput)
+                            {
+                            //Dump to accompanying file
+                             fprintf(config->csv_file, "%lu,",GetTickCountMicroseconds());
+                             fprintf(config->csv_file, "%u\n",frameNumber);
+                             snprintf(filename,1024,"%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
+                             WritePPMG(filename,&dataAsImage);
+                            }
+
                             frameNumber = frameNumber+1;
                             config->framesCaptured = frameNumber; // Update as soon as it is done
                         }
@@ -441,10 +466,14 @@ void *gigecamera_thread(void *arg)
                             usleep(targetMicroseconds - microsecondsGrab);
                         }
                     }//We have a framerate set
+                   //usleep(10);
                 } //While loop
 
-    fclose(config->csv_file);
+    if (enabledFileOutput)
+           { fclose(config->csv_file); }
 
+    if (shm_stream!=NULL)
+           { stopStream(shm_stream); }
 
     gigecamera_stopStream(config);
     return NULL;

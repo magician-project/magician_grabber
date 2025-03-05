@@ -15,10 +15,14 @@ typedef struct
     char ip_address[128];
     int port;
     char csv_name[128];
+
     FILE * csv_file;
     char * keep_running;
+    char running;
+
     int socketHandle;
     unsigned long receivedDataFrames;
+    float Hz;
 } ATINetFTConfig;
 
 
