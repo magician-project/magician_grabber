@@ -1,6 +1,11 @@
 #ifndef COMMON_H_INCLUDED
 #define COMMON_H_INCLUDED
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #include <unistd.h>
 #include <time.h>
 
@@ -42,6 +47,11 @@ static unsigned long GetTickCountMicroseconds()
 #define RED     "\033[31m"      /* Red */
 #define GREEN   "\033[32m"      /* Green */
 #define YELLOW  "\033[33m"      /* Yellow */
+
+#ifdef __cplusplus
+}
+#endif
+
 
 
 #endif // COMMON_H_INCLUDED

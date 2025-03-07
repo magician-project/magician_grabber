@@ -284,6 +284,10 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
 
 
+
+
+
+
 int gigecamera_stopStream(GiGECameraConfig * context)
 {
   context->running = 0;

@@ -7,13 +7,13 @@
 
 #include "arduinoSensor.h"
 
-
 int arduino_startStream(ArduinoSerialConfig * context)
 {
     context->serial_fd = open(context->port_name, O_RDWR | O_NOCTTY);
     if (context->serial_fd == -1)
     {
         fprintf(stderr,RED "Failed to open serial port %s\n" NORMAL,context->port_name);
+        exit(1);
         return 1;
     }
 
@@ -46,7 +46,7 @@ int arduino_startStream(ArduinoSerialConfig * context)
   char buffer[]={"i\n"};
   int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
   tcdrain(context->serial_fd);
-  fprintf(stderr,"Send start command (%u / %lu bytes)\n",n,sizeof(buffer)-1);
+  fprintf(stderr,"Send start command (%u / %lu bytes) to %s \n",n,sizeof(buffer)-1,context->port_name);
 
   return 0;
 }
@@ -60,66 +60,11 @@ int arduino_stopStream(ArduinoSerialConfig * context)
     char buffer[]={"f\n"};
     int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
     tcdrain(context->serial_fd);
-    fprintf(stderr,"Send stop command (%u / %lu bytes)\n",n,sizeof(buffer)-1);
+    fprintf(stderr,"Send stop command (%u / %lu bytes) to %s \n",n,sizeof(buffer)-1,context->port_name);
 
     close(context->serial_fd);
     return 0;
 }
-
-
-int appendDataAfterInjectingTimestamp(FILE * fd,char * buffer,int bufferSize,int * halfway,unsigned long timestamp, unsigned long *receivedFrames)
-{
-  #if USE_SIMPLE_FRAME_APPEND
-  fprintf(fd, "%s", buffer);
-  return 1;
-  #else
-  int c = 0;
-  char * lineStart = buffer;
-
-  char alreadyAtNewline = 0;
-
-  while (c<bufferSize)
-  {
-    switch (buffer[c])
-    {
-        //------------------------------------------
-        case 0:
-          //Reach end of buffer, flush the rest
-          fprintf(fd, "%s", lineStart);
-          alreadyAtNewline = 0; //<- not needed but for sake of having a correct state
-          return 1;
-        break;
-        //------------------------------------------
-        case 10:
-        case 13:
-          //Reached new line on buffer, flush it
-          *halfway=0;
-          buffer[c] = 0;
-          if (!alreadyAtNewline) //Only print one new line in case of CR LF ( 10 13 )
-            { fprintf(fd, "%s\n", lineStart);
-              *receivedFrames+=1;
-            }
-          lineStart = buffer + c + 1;
-          alreadyAtNewline = 1;
-        break;
-        //------------------------------------------
-        default:
-          //Reached normal character, inser timestamp if its the first
-          if (*halfway==0)
-          {
-            fprintf(fd, "%lu,", timestamp);
-            *halfway=1;
-          }
-          alreadyAtNewline = 0;
-        break;
-        //------------------------------------------
-    }
-    ++c;
-  }
-  return 1;
-  #endif // USE_SIMPLE_FRAME_APPEND
-}
-
 
 void *arduino_thread(void *arg)
 {
@@ -128,11 +73,21 @@ void *arduino_thread(void *arg)
 
     char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
 
-    #define BUFFER_SIZE 256
-    char buffer[BUFFER_SIZE + 1]={0};
+    #define BUFFER_SIZE 10000//10K buffer is big
+    char * buffer = (char*) malloc(sizeof(char) * (BUFFER_SIZE + 1) );
 
-    if (arduino_startStream(config)==0)
+    #define LINE_BUFFER_SIZE 1024//1K buffer is big
+    char * lineBuffer = (char*) malloc(sizeof(char) * (LINE_BUFFER_SIZE + 1) );
+    int lineIndex = 0;      // Current write position
+
+
+    if ( (buffer!=0) && (lineBuffer!=0) )
     {
+     memset(buffer,0,sizeof(char) * (BUFFER_SIZE + 1));
+     memset(lineBuffer,0,sizeof(char) * (LINE_BUFFER_SIZE + 1));
+
+     if (arduino_startStream(config)==0)
+     {
      char fullCSVOutputPath[2048]={0};
      snprintf(fullCSVOutputPath,2048,"%s/%s",cfg->outputDirectory,config->csv_name);
      config->csv_file = fopen(fullCSVOutputPath, "w");
@@ -145,37 +100,74 @@ void *arduino_thread(void *arg)
      {
          fprintf(stderr,"Opened %s for output\n",fullCSVOutputPath);
      }
-     fprintf(config->csv_file,"timestamp,dev_timestamp,accX,accY,accY\n");
+
+     //Inject CSV headers where needed..
+     if (strstr(config->csv_name,"accelerometer")!=0)
+        { fprintf(config->csv_file,"timestamp,dev_timestamp,accX,accY,accY\n"); }
+     if (strstr(config->csv_name,"controller")!=0)
+        { fprintf(config->csv_file,"timestamp,dev_timestamp,Button1,Distance1,Distance2,Distance3,Light1,Light2,Light3,Light4,Light5,Light6\n"); }
+
 
      unsigned long arduinoStartTime = GetTickCountMicroseconds();
 
-      int halfway = 0;
-      while (*config->keep_running)
+
+     while (*config->keep_running)
       {
         config->running = 1;
 
         int n = read(config->serial_fd, buffer, BUFFER_SIZE - 1);
 	    unsigned long receptionTime = GetTickCountMicroseconds();
+
+
         if (n > 0)
         {
-            buffer[n] = 0;//We can do this because buffer is 1 byte bigger
-
-            appendDataAfterInjectingTimestamp(config->csv_file,buffer,n,&halfway,receptionTime,&config->receivedDataFrames);
-
-            buffer[0] = 0;//Always have a printable buffer
-            //fflush(config->csv_file);
+        //fprintf(stderr,"%s: Read %d / Buffer at %u / %s\n ",config->csv_name,n,lineIndex,lineBuffer);
+        //buffer[n] = 0; // Ensure null-terminated string
+        for (int i = 0; i < n; i++)
+        {
+            if (buffer[i] == 10 || buffer[i] == 13)
+            {
+                //This check makes sure we are not passing a double new line (CRLF) to the CSV..
+                if (lineIndex!=0)
+                {
+                 // End of a valid line, flush it
+                 lineBuffer[lineIndex] = 0;
+                 fprintf(config->csv_file, "%lu,", receptionTime);
+                 fprintf(config->csv_file, "%s\n", lineBuffer);
+                 lineIndex = 0;
+                 config->receivedDataFrames+=1;
+                 //fprintf(stderr,"DUMP TO FILE %s\n",lineBuffer);
+                 fflush(config->csv_file);
+                }
+            }
+            else
+            {
+                if (lineIndex<LINE_BUFFER_SIZE-1)
+                {
+                 lineBuffer[lineIndex] = buffer[i];
+                 lineIndex+=1;
+                } else
+                {
+                 fprintf(stderr,"ARDUINO/TEENSY RECEIVE THREAD RUN OUT OF BUFFER SPACE\n");
+                 lineIndex = 0;
+                }
+            }
         }
-
+        }
 
         double timeElapsedInSeconds = (double) ((double) (receptionTime-arduinoStartTime)/(double) 1000000.0);
         double computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds;
         config->Hz = (float) computeRate;
-        //usleep(1000);
+        usleep(1000);
       }
 
       fclose(config->csv_file);
 
       arduino_stopStream(config);
+    }
+
+
+     free(buffer);
     }
     return NULL;
 }
