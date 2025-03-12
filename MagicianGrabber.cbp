@@ -63,6 +63,7 @@
 		<Unit filename="multiModalGrabber.c">
 			<Option compilerVar="CC" />
 		</Unit>
+		<Unit filename="performance.h" />
 		<Unit filename="sharedMemoryVideoBuffers.c">
 			<Option compilerVar="CC" />
 		</Unit>

@@ -165,7 +165,7 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
     if ( (camera == NULL) && (error != NULL) )
     {
-        fprintf (stderr,"No camera found, terminating streamer\n");
+        fprintf (stderr,"\nNo camera found, terminating grabber\n");
         exit(1);
     }
     printf ("Found a device ..\n");
@@ -472,6 +472,9 @@ void *gigecamera_thread(void *arg)
                     }//We have a framerate set
                    //usleep(10);
                 } //While loop
+
+
+    fprintf(stderr,"Camera Thread terminating\n");
 
     if (enabledFileOutput)
            { fclose(config->csv_file); }

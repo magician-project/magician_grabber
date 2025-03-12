@@ -7,8 +7,90 @@
 
 #include "arduinoSensor.h"
 
+
+int serialport_init(const char* serialport, int baud)
+{
+    struct termios toptions;
+    int fd;
+
+    //fd = open(serialport, O_RDWR | O_NOCTTY | O_NDELAY);
+    fd = open(serialport, O_RDWR | O_NOCTTY | O_NDELAY);//| O_NONBLOCK
+
+    if (fd == -1)
+    {
+        fprintf(stderr,RED "serialport_init: Unable to open port " NORMAL);
+        return -1;
+    }
+
+    //int iflags = TIOCM_DTR;
+    //ioctl(fd, TIOCMBIS, &iflags);    // turn on DTR
+    //ioctl(fd, TIOCMBIC, &iflags);    // turn off DTR
+
+    if (tcgetattr(fd, &toptions) < 0)
+    {
+        fprintf(stderr,RED "serialport_init: Couldn't get term attributes" NORMAL);
+        return -1;
+    }
+
+
+    speed_t brate = baud; // let you override switch below if needed
+    switch(baud)
+    {
+     case 4800:   brate=B4800;   break;
+     case 9600:   brate=B9600;   break;
+#ifdef B14400
+     case 14400:  brate=B14400;  break;
+#endif
+     case 19200:  brate=B19200;  break;
+#ifdef B28800
+     case 28800:  brate=B28800;  break;
+#endif
+     case 38400:  brate=B38400;  break;
+     case 57600:  brate=B57600;  break;
+     case 115200: brate=B115200; break;
+     default:
+        fprintf(stderr,"Unsupported speed %u baud\n",baud);
+        exit(1);
+    }
+
+    cfsetispeed(&toptions, brate);
+    cfsetospeed(&toptions, brate);
+
+    toptions.c_cflag = (CLOCAL | CREAD | CS8);
+    toptions.c_iflag = IGNPAR;
+    toptions.c_oflag = 0;
+    toptions.c_lflag = 0;
+
+    // see: http://unixwiz.net/techtips/termios-vmin-vtime.html
+    toptions.c_cc[VMIN]  = 0;
+    toptions.c_cc[VTIME] = 0;
+    //toptions.c_cc[VTIME] = 20;
+
+    tcflush(fd, TCIFLUSH);
+    tcsetattr(fd, TCSANOW, &toptions);
+    if( tcsetattr(fd, TCSAFLUSH, &toptions) < 0)
+    {
+        fprintf(stderr,RED "init_serialport: Couldn't set term attributes" NORMAL);
+        return -1;
+    }
+
+    return fd;
+}
+
+
+int serialport_close( int fd )
+{
+    return close( fd );
+}
+
+
+
+
 int arduino_startStream(ArduinoSerialConfig * context)
 {
+    context->serial_fd = serialport_init(context->port_name,context->baud_rate);
+
+    /*
     context->serial_fd = open(context->port_name, O_RDWR | O_NOCTTY);
     if (context->serial_fd == -1)
     {
@@ -19,10 +101,12 @@ int arduino_startStream(ArduinoSerialConfig * context)
 
     struct termios tty;
     memset(&tty, 0, sizeof(tty));
+
     if (tcgetattr(context->serial_fd, &tty) != 0)
     {
-        perror("Failed to get serial attributes");
+        fprintf(stderr,RED "Failed to get serial attributes" NORMAL);
         close(context->serial_fd);
+        exit(1);
         return 1;
     }
 
@@ -37,16 +121,24 @@ int arduino_startStream(ArduinoSerialConfig * context)
     tcflush(context->serial_fd, TCIFLUSH);
     if (tcsetattr(context->serial_fd, TCSANOW, &tty) != 0)
     {
-        perror("Failed to set serial attributes");
+        fprintf(stderr,RED "Failed to set serial attributes" NORMAL);
         close(context->serial_fd);
-        return 1;
-    }
+        exit(1);
+      /  return 1;
+    }*/
 
   //Send Start Command!
   char buffer[]={"i\n"};
   int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
+
+  if (n<0)
+  {
+    fprintf(stderr,"Sending start command to %s failed (%d)\n",context->port_name,n);
+    exit(1);
+  }
+
   tcdrain(context->serial_fd);
-  fprintf(stderr,"Send start command (%u / %lu bytes) to %s \n",n,sizeof(buffer)-1,context->port_name);
+  fprintf(stderr,"Send start command (%u / %lu bytes) to %s , wrote %u bytes \n",n,sizeof(buffer)-1,context->port_name,n);
 
   return 0;
 }
@@ -62,7 +154,8 @@ int arduino_stopStream(ArduinoSerialConfig * context)
     tcdrain(context->serial_fd);
     fprintf(stderr,"Send stop command (%u / %lu bytes) to %s \n",n,sizeof(buffer)-1,context->port_name);
 
-    close(context->serial_fd);
+    serialport_close(context->serial_fd);
+    //close(context->serial_fd);
     return 0;
 }
 
@@ -156,10 +249,15 @@ void *arduino_thread(void *arg)
         }
 
         double timeElapsedInSeconds = (double) ((double) (receptionTime-arduinoStartTime)/(double) 1000000.0);
-        double computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds;
+        double computeRate = 0.0;
+        if (timeElapsedInSeconds!=0.0)
+           { computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds; }
         config->Hz = (float) computeRate;
         usleep(1000);
       }
+
+      fprintf(stderr,"Arduino Thread %s terminating\n",config->csv_name);
+
 
       fclose(config->csv_file);
 

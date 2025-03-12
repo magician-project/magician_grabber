@@ -12,6 +12,7 @@ extern "C"
 typedef struct
 {
     char outputDirectory[1024];
+    char outputDirectoryOriginal[1024];
     unsigned long maxTimeToGrabForInSeconds;
 
 } GlobalConfig;

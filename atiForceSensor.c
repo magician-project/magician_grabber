@@ -137,10 +137,15 @@ void *atinetft_thread(void *arg)
         config->receivedDataFrames+=1;
 
         double timeElapsedInSeconds = (double) ((double) (receptionTime-atiStartTime)/(double) 1000000.0);
-        double computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds;
+        double computeRate = 0.0;
+        if (timeElapsedInSeconds!=0.0)
+           { computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds; }
+
         config->Hz = (float) computeRate;
         //usleep(100);
      }
+     fprintf(stderr,"ATI Thread terminating\n");
+
 
      fclose(config->csv_file);
 
