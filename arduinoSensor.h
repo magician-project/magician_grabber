@@ -20,6 +20,8 @@ typedef struct
     char * keep_running;
     char running;
 
+    char * extraCommands;
+
     int serial_fd;
     unsigned long receivedDataFrames;
     float Hz;

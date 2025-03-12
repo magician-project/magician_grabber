@@ -136,9 +136,20 @@ int arduino_startStream(ArduinoSerialConfig * context)
     fprintf(stderr,"Sending start command to %s failed (%d)\n",context->port_name,n);
     exit(1);
   }
+  fprintf(stderr,"Send start command (%u / %lu bytes) to %s , wrote %u bytes \n",n,sizeof(buffer)-1,context->port_name,n);
+
+  if (context->extraCommands!=0)
+  {
+   int n = write(context->serial_fd, context->extraCommands, strlen(context->extraCommands));
+   if (n<0)
+   {
+    fprintf(stderr,"Sending extra command to %s failed (%d)\n",context->port_name,n);
+    exit(1);
+   }
+   fprintf(stderr,"Send extra command (%u / %lu bytes) to %s , wrote %u bytes \n",n,strlen(context->extraCommands),context->port_name,n);
+  }
 
   tcdrain(context->serial_fd);
-  fprintf(stderr,"Send start command (%u / %lu bytes) to %s , wrote %u bytes \n",n,sizeof(buffer)-1,context->port_name,n);
 
   return 0;
 }
