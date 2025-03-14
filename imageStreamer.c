@@ -88,7 +88,7 @@ int stream_image(struct VideoFrame *frame, struct Image* dataAsImage)
 
     if (startWritingToVideoBufferPointer(frame))
     {
-        copy_to_shared_memory((void *)frame, dataAsImage->pixels ,dataAsImage->image_size);
+        copy_to_shared_memory(frame, dataAsImage->pixels ,dataAsImage->image_size);
         stopWritingToVideoBufferPointer(frame);
         return 1;
     } else

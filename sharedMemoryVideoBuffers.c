@@ -133,7 +133,7 @@ int freeLocalMapping(struct VideoFrameLocalMapping * lm)
   return 0;
 }
 
-unsigned char * getLocalMappingPointer(struct VideoFrameLocalMapping * lm,int item)
+unsigned char * getLocalMappingPointer(struct VideoFrameLocalMapping * lm,unsigned int item)
 {
   if (lm!=0)
   {
@@ -146,7 +146,7 @@ unsigned char * getLocalMappingPointer(struct VideoFrameLocalMapping * lm,int it
 }
 
 
-int mapRemoteToLocal(struct SharedMemoryContext *context, struct VideoFrameLocalMapping * localMap,int item)
+int mapRemoteToLocal(struct SharedMemoryContext *context, struct VideoFrameLocalMapping * localMap,unsigned int item)
 {
   if (context!=0)
   {
@@ -179,7 +179,7 @@ int mapRemoteToLocal(struct SharedMemoryContext *context, struct VideoFrameLocal
 }
 
 
-int unmapLocalMappingItem(struct VideoFrameLocalMapping * localmap,int item)
+int unmapLocalMappingItem(struct VideoFrameLocalMapping * localmap,unsigned int item)
 {
  if (localmap!=0)
   {
@@ -223,7 +223,6 @@ void copy_to_shared_memory(struct VideoFrame *frame, const void* src, size_t n)
         {
            if (frame->frame_size >= n)
            {
-             //Commented out to reduce console spam
              //fprintf(stderr,"Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
              memcpy(frame->client_address_space_data_pointer,src, n);
            }
@@ -245,7 +244,7 @@ int getSharedMemoryContextNumberOfBuffers(struct SharedMemoryContext *context)
   return 0;
 }
 
-struct VideoFrame * getSharedMemoryContextVideoFrame(struct SharedMemoryContext *context, int item)
+struct VideoFrame * getSharedMemoryContextVideoFrame(struct SharedMemoryContext *context, unsigned int item)
 {
   if (context!=0)
   {
@@ -257,7 +256,7 @@ struct VideoFrame * getSharedMemoryContextVideoFrame(struct SharedMemoryContext 
   return 0;
 }
 
-int remoteSharedMemoryContextVideoFrameIsPopulated(struct SharedMemoryContext *context, int item)
+int remoteSharedMemoryContextVideoFrameIsPopulated(struct SharedMemoryContext *context, unsigned int item)
 {
   if (context!=0)
   {
@@ -461,7 +460,7 @@ int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * st
    if (context!=0)
    {
       int contextID = -1;
-      for (int i=0; i<context->numberOfBuffers; i++)
+      for (unsigned int i=0; i<context->numberOfBuffers; i++)
       {
          if (strcmp(streamName,context->buffer[i].name)==0)
          {
@@ -581,7 +580,6 @@ int startWritingToVideoBufferPointer(struct VideoFrame *vf)
 {
     if (vf==0) { return 0; }
 
-    //Commented out to reduce console spam
     //fprintf(stderr,"startWritingToVideoBufferPointer :");
     int attempts = 0;
     int result   = 0;
@@ -603,7 +601,7 @@ int startWritingToVideoBufferPointer(struct VideoFrame *vf)
 
     if (!result)
     {
-        fprintf(stderr,RED "startWritingToVideoBufferPointer : failed\n" NORMAL);
+        //fprintf(stderr,RED "failed\n" NORMAL);
         return 0; // Buffer is already locked and we timed out waiting for it
     }
     //fprintf(stderr,GREEN "success\n" NORMAL);
@@ -614,7 +612,6 @@ int startWritingToVideoBufferPointer(struct VideoFrame *vf)
 int stopWritingToVideoBufferPointer(struct VideoFrame *vf)
 {
     if (vf==0) { return 0; }
-    //Commented out to reduce console spam
     //fprintf(stderr,"stopWritingToVideoBufferPointer :");
     __sync_lock_release(&vf->locked);
     //fprintf(stderr,GREEN "success\n" NORMAL);

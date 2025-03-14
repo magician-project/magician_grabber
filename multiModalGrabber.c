@@ -28,6 +28,7 @@
 #include "atiForceSensor.h"
 #include "gigeCameraSensor.h"
 #include "resolveUSBDevice.h"
+#include "tactileFeatures.h"
 #include "callbacks.h"
 
 //Shared memory for streaming
@@ -55,6 +56,7 @@ void handle_sigint(int sig)
 
 int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
 {
+    if (cfg==0) { return 0; }
     snprintf(cfg->outputDirectory,512,"%s",outputDirectory);
 
     char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
@@ -86,7 +88,10 @@ int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
 
 int noOutputDirectory(GlobalConfig *cfg)
 {
+  if (cfg==0) { return 0; }
+
   setOutputDirectory(cfg,"/dev/null");
+  return 1;
 }
 
 int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
@@ -124,6 +129,7 @@ int main (int argc, char **argv)
     unsigned char countdown    = 0;
 
     // Modules available to use
+    char interceptKeyboard = 1;
     char useRAM       = 0;
     char useArduino   = 0;
     char useTeensy    = 0;
@@ -177,6 +183,16 @@ int main (int argc, char **argv)
         {
             countdown = (unsigned char) atoi(argv[i+1]);
             fprintf(stderr,"Will perform countdown before starting\n");
+        }
+        else if (strcmp(argv[i],"--nokb")==0)
+        {
+            interceptKeyboard = 0;
+            fprintf(stderr,"Will not intercept keyboard presses\n");
+        }
+        else if (strcmp(argv[i],"--kb")==0)
+        {
+            interceptKeyboard = 1;
+            fprintf(stderr,"Will intercept keyboard presses\n");
         }
         else if (strcmp(argv[i],"--ram")==0)
         {
@@ -236,8 +252,13 @@ int main (int argc, char **argv)
         }
         else if (strcmp(argv[i],"--features")==0)
         {
-            calculateTactileFeatures = 1;
-            fprintf(stderr,"Activating Force\n");
+            #if TACTILE
+              calculateTactileFeatures = 1;
+              fprintf(stderr,"Activating Force\n");
+            #else
+              fprintf(stderr,"This build of magician grabber has no tactile features, try magician_grabber_tactile\n");
+              exit(1);
+            #endif // TACTILE
         }
         else if (strcmp(argv[i],"--accelerometer")==0)
         {
@@ -345,15 +366,23 @@ int main (int argc, char **argv)
     ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM1",    "accelerometer.csv", 115200, NULL, &keep_running, 0, NULL , 0, 0, 0.0, NULL};
     ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyACM0",    "controller.csv",    115200, NULL, &keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, NULL};
 
+
     //Try to make arduino wake up correctly
     //system("stty -F /dev/ttyACM0 115200 raw -echo");
     //system("stty -F /dev/ttyACM1 115200 raw -echo");
 
+    #if TACTILE
+    calculateTactileFeatures = (useTeensy) && (useATIForce);
+    pthread_t tactile_tid;
+    struct TactileDataState  tactile_config = {&cfg, &keep_running, 0, 0};
     if (calculateTactileFeatures)
     {
-        teensy_config.callback   = (void*) accelerometer_callback;
-        //atinetft_config.callback = (void*) force_callback;
+        teensy_config.callback   = (void*) addTactileAccelerometerReading;//accelerometer_callback;
+        atinetft_config.callback = (void*) addTactileForceReading;//force_callback;
+        pthread_create(&tactile_tid,    NULL, tactile_thread,    &tactile_config);
     }
+    #endif // TACTILE
+
 
     StreamingContext * streaming_context=0;
 
@@ -420,7 +449,9 @@ int main (int argc, char **argv)
     if (useATIForce) { pthread_create(&atinetft_tid,   NULL, atinetft_thread,   &atinetft_config); }
 
     //Enable keystrokes to be received without blocking execution
-    //set_nonblocking_mode();
+    int key = 0;
+    if (interceptKeyboard)
+          { set_nonblocking_mode(); }
 
     unsigned long startTime = GetTickCountMicroseconds();
     unsigned long currentTime = startTime;
@@ -431,7 +462,8 @@ int main (int argc, char **argv)
         // Simulate main loop work
         usleep(1000);
 
-        int key = 0;// get_keystroke();
+        if (interceptKeyboard)
+             { key = get_keystroke(); }
 
         if (key == 'q')
         {  // Stop when 'q' is pressed
@@ -485,6 +517,10 @@ int main (int argc, char **argv)
           usleep(10000);
         }
     }
+
+    //Restore terminal to its former state
+    if (interceptKeyboard)
+         { restore_terminal_mode(); }
 
     // Wait for threads to finish
     if (useTeensy)   { fprintf(stderr,"Releasing Teensy\n");  pthread_join(teensy_tid, NULL);     }

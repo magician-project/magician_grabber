@@ -39,9 +39,12 @@
 			<Add option="-D_GNU_SOURCE" />
 		</Compiler>
 		<Linker>
+			<Add option="-lm" />
 			<Add option="`pkg-config --libs aravis-0.10 `" />
 			<Add option="-lpthread" />
-			<Add option="-lm" />
+			<Add option="-lfftw3" />
+			<Add option="tactile_processor/iir1/build/libiir_static.a" />
+			<Add option="tactile_processor/libTactileProcessor.a" />
 		</Linker>
 		<Unit filename="arduinoSensor.c">
 			<Option compilerVar="CC" />
@@ -51,6 +54,7 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="atiForceSensor.h" />
+		<Unit filename="callbacks.h" />
 		<Unit filename="common.h" />
 		<Unit filename="gigeCameraSensor.c">
 			<Option compilerVar="CC" />
@@ -64,6 +68,7 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="performance.h" />
+		<Unit filename="resolveUSBDevice.h" />
 		<Unit filename="sharedMemoryVideoBuffers.c">
 			<Option compilerVar="CC" />
 		</Unit>

@@ -9,45 +9,75 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if TACTILE
+#include "tactile_processor/TactileFeaturesProcessor.hpp"
+#endif // TACTILE
 
-int addTactileAccelerometerReading(struct TactileDataState * state,unsigned long system_timestamp,unsigned long device_timestamp,float accX,float accY,float accZ)
+
+
+int addTactileAccelerometerReading(ArduinoSerialConfig *arduino_config, unsigned long system_timestamp, unsigned long dev_timestamp, double accX, double accY, double accZ)
 {
-
-
-  return 1;
+  #if TACTILE
+  //fprintf(stderr,"addTactileAccelerometerReading called\n\n");
+  return tactile_add_acc(system_timestamp,accX,accY,accZ);
+  #endif // TACTILE
+  return 0;
 }
 
 
-int addTactileForceReading(struct TactileDataState * state,unsigned long system_timestamp,float fX,float fY,float fZ,float tX,float tY,float tZ)
+int addTactileForceReading(ATINetFTConfig *config, unsigned long system_timestamp, double fX,double fY,double fZ,double tX,double tY,double tZ)
 {
-
-
-  return 1;
+   #if TACTILE
+    //fprintf(stderr,"addTactileForceReading called\n\n");
+    return tactile_add_force(system_timestamp,fX,fY,fZ);
+   #endif // TACTILE
+  return 0;
 }
 
 
-void *tactile_threading(void *arg)
+void *tactile_thread(void *arg)
 {
-  /*
-   struct TactileDataState  *config = (struct TactileDataState  *)arg;
+   #if TACTILE
+   struct TactileDataState  *config = (struct TactileDataState  *) arg;
    GlobalConfig *cfg = config->global;
 
 
+   unsigned long lastUpdateTime = GetTickCountMicroseconds();
+
+   FILE * FrFD   = fopen( "FrFD.csv", "w");
+   FILE * AsFD   = fopen( "AsFD.csv", "w");
+   FILE * ApsdFD = fopen( "ApsdFD.csv", "w");
+   FILE * FpsdFD = fopen( "FpsdFD.csv", "w");
+
+
+   if ( (FrFD != 0) && (AsFD != 0) && (ApsdFD != 0) && (FpsdFD != 0) )
+   {
+
    while (*config->keep_running)
    {
-     unsigned long loopTime = GetTickCountMicroseconds();
+     unsigned long now = GetTickCountMicroseconds();
+
+
+     if (now - lastUpdateTime > 10000)
+     {
+       tactile_write_disk(FrFD, AsFD, ApsdFD , FpsdFD);
+       fflush(FrFD);
+       fflush(AsFD);
+       fflush(ApsdFD);
+       fflush(FpsdFD);
+     }
+
+     usleep(1000);
+   }
+
+       fclose(FrFD);
+       fclose(AsFD);
+       fclose(ApsdFD);
+       fclose(FpsdFD);
 
    }
-  */
+   #endif // TACTILE
+
    return 0;
 }
-
-
-/*
-int main(int argc, char **argv)
-{
-   struct TactileDataState state = {0};
-   tactile_threading((void*) &state);
-}
-*/
 

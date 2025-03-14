@@ -200,7 +200,6 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
         if (ARV_IS_STREAM (stream))
         {
-            int i;
             size_t payload;
 
             /* Retrieve the payload size for buffer creation */
@@ -208,7 +207,7 @@ int gigecamera_startStream(GiGECameraConfig * context)
             if (error == NULL)
             {
                 /* Insert some buffers in the stream buffer pool */
-                for (i = 0; i < ARV_VIEWER_N_BUFFERS; i++)
+                for (unsigned int i = 0; i < ARV_VIEWER_N_BUFFERS; i++)
                     arv_stream_push_buffer (stream, arv_buffer_new (payload, NULL));
             }
 
@@ -299,8 +298,8 @@ int gigecamera_stopStream(GiGECameraConfig * context)
 
   GError *error = NULL;
 
-  ArvCamera *camera = context->camera;
-  ArvStream *stream = context->stream;
+  ArvCamera *camera = (ArvCamera *) context->camera;
+  ArvStream *stream = (ArvStream *) context->stream;
 
   /* Stop the acquisition */
   arv_stream_set_emit_signals (stream, FALSE);
@@ -363,7 +362,7 @@ void *gigecamera_thread(void *arg)
     }
 
     //ArvCamera *camera = config->camera;
-    ArvStream *stream = config->stream;
+    ArvStream *stream = (ArvStream *) config->stream;
 
     unsigned long startGrab, endGrab;
     unsigned long microsecondsGrab;
@@ -416,7 +415,7 @@ void *gigecamera_thread(void *arg)
                             size_t size;
                             data = arv_buffer_get_image_data(buffer,&size);
                             //printf ("Size =  %lu\n",size);
-                            dataAsImage.pixels       = data;
+                            dataAsImage.pixels       = (unsigned char*) data;
 
                             dataAsImage.channels     = 1;
                             dataAsImage.bitsperpixel = 8;
