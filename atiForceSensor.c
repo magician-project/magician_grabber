@@ -1,4 +1,9 @@
-/* Simple demo showing how to communicate with Net F/T using C language. */
+/** @file atiForceSensor.c
+ *  @brief This is an abstraction layer for the ATI NET F/T :
+ *  It is based on the Net F/T C Sample found here:
+ *  https://www.ati-ia.com/Products/ft/software/net_ft_software.aspx
+ *  @author Ammar Qammaz (AmmarkoV)
+ */
 
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -68,8 +73,6 @@ int ati_startStream(ATINetFTConfig * context)
 }
 
 
-
-
 int ati_stopStream(ATINetFTConfig * context)
 {
     context->running = 1;
@@ -77,6 +80,19 @@ int ati_stopStream(ATINetFTConfig * context)
     return 0;
 }
 
+
+int ati_call_callback(ATINetFTConfig *config, unsigned long timestamp, double fX,double fY,double fZ,double tX,double tY,double tZ)
+{
+    if (config->callback)
+    {
+        // Cast back to the correct function pointer type before calling
+        int (*callback_func)(ATINetFTConfig *,unsigned long, double, double, double, double, double, double) =
+                   (int (*)(ATINetFTConfig *,unsigned long, double, double, double, double, double, double)) config->callback;
+
+        return callback_func(config, timestamp,  fX, fY, fZ, tX, tY, tZ);  // Call the function
+    }
+    return 0;  // Indicate failure if no callback is set
+}
 
 void *atinetft_thread(void *arg)
 {
@@ -95,15 +111,19 @@ void *atinetft_thread(void *arg)
 
     if (ati_startStream(config)==0)
     {
-     char fullCSVOutputPath[2048]={0};
-     snprintf(fullCSVOutputPath,2048,"%s/%s",cfg->outputDirectory,config->csv_name);
-     config->csv_file = fopen(fullCSVOutputPath, "w");
-     if (!config->csv_file)
+
+     if (enabledFileOutput)
      {
+      char fullCSVOutputPath[2048]={0};
+      snprintf(fullCSVOutputPath,2048,"%s/%s",cfg->outputDirectory,config->csv_name);
+      config->csv_file = fopen(fullCSVOutputPath, "w");
+      if (!config->csv_file)
+      {
         perror("Failed to open ATI NetFT log file");
         return NULL;
+      }
+      fprintf(config->csv_file,"timestamp,fX,fY,fZ,tX,tY,tZ\n");
      }
-     fprintf(config->csv_file,"timestamp,fX,fY,fZ,tX,tY,tZ\n");
 
 
    unsigned long atiStartTime = GetTickCountMicroseconds();
@@ -124,18 +144,31 @@ void *atinetft_thread(void *arg)
 	//printf( "Status: 0x%08x\n", resp.status );
 	//for (i =0;i < 6;i++) { printf("%s: %d\n", AXES[i], resp.FTData[i]); }
 
-         // Placeholder for actual force sensor data acquisition
-        fprintf(config->csv_file, "%lu,",receptionTime);
-        fprintf(config->csv_file, "%f,", (double) resp.FTData[0]/FORCE_RATIO);
-        fprintf(config->csv_file, "%f,", (double) resp.FTData[1]/FORCE_RATIO);
-        fprintf(config->csv_file, "%f,", (double) resp.FTData[2]/FORCE_RATIO);
-        fprintf(config->csv_file, "%f,", (double) resp.FTData[3]/TORQUE_RATIO);
-        fprintf(config->csv_file, "%f,", (double) resp.FTData[4]/TORQUE_RATIO);
-        fprintf(config->csv_file, "%f\n",(double) resp.FTData[5]/TORQUE_RATIO);
+        // Calculate Force/Torque using double precision
+	    double fX = (double) resp.FTData[0]/FORCE_RATIO;
+	    double fY = (double) resp.FTData[1]/FORCE_RATIO;
+	    double fZ = (double) resp.FTData[2]/FORCE_RATIO;
+	    double tX = (double) resp.FTData[3]/TORQUE_RATIO;
+	    double tY = (double) resp.FTData[4]/TORQUE_RATIO;
+	    double tZ = (double) resp.FTData[5]/TORQUE_RATIO;
+
+        // Placeholder for actual force sensor data acquisition
+        if (enabledFileOutput)
+          { fprintf(config->csv_file, "%lu,%f,%f,%f,%f,%f,%f\n",receptionTime,fX,fY,fZ,tX,tY,tZ); }
+
+        // Propagate values to any callbacks that need them
+        if (config->callback)
+                 {
+                    //Pass our CSV line to a callback function!
+                    ati_call_callback(config,receptionTime,fX, fY, fZ, tX, tY, tZ);
+                 }
+
+        //Make sure values are flushed (sudden termination protection?)
         fflush(config->csv_file);
 
         config->receivedDataFrames+=1;
 
+        //Calculate framerates
         double timeElapsedInSeconds = (double) ((double) (receptionTime-atiStartTime)/(double) 1000000.0);
         double computeRate = 0.0;
         if (timeElapsedInSeconds!=0.0)
@@ -146,8 +179,8 @@ void *atinetft_thread(void *arg)
      }
      fprintf(stderr,"ATI Thread terminating\n");
 
-
-     fclose(config->csv_file);
+     if (enabledFileOutput)
+        { fclose(config->csv_file); }
 
      ati_stopStream(config);
     }

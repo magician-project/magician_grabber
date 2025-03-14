@@ -25,6 +25,8 @@ typedef struct
     int serial_fd;
     unsigned long receivedDataFrames;
     float Hz;
+
+    void * callback;
 } ArduinoSerialConfig;
 
 

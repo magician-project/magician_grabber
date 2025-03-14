@@ -1,3 +1,9 @@
+/** @file tactileFeatures.c
+ *  @brief  A real-time feature calculation utility for the ATI sensor
+
+ *  @author Michele Pompilio
+ */
+
 #include "tactileFeatures.h"
 
 #include <stdio.h>
@@ -22,17 +28,17 @@ int addTactileForceReading(struct TactileDataState * state,unsigned long system_
 
 void *tactile_threading(void *arg)
 {
-    struct TactileDataState  *config = (struct TactileDataState  *)arg;
-    GlobalConfig *cfg = config->global;
+  /*
+   struct TactileDataState  *config = (struct TactileDataState  *)arg;
+   GlobalConfig *cfg = config->global;
 
 
    while (*config->keep_running)
    {
      unsigned long loopTime = GetTickCountMicroseconds();
 
-
    }
-
+  */
    return 0;
 }
 

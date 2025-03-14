@@ -23,6 +23,9 @@ typedef struct
     int socketHandle;
     unsigned long receivedDataFrames;
     float Hz;
+
+    void * callback;
+
 } ATINetFTConfig;
 
 

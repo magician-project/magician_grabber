@@ -1,4 +1,9 @@
-/* SPDX-License-Identifier:Unlicense */
+/** @file gigeCameraSensor.c
+ *  @brief This is an ARAVIS grabber ( https://github.com/AravisProject/aravis )
+ *  wrapped to fit the rest of the modules and based on a standalone utility developed during early stages of the Magician Project
+ *  https://github.com/AmmarkoV/aravis-c-examples/blob/main/06-grabber.c
+ *  @author Ammar Qammaz (AmmarkoV)
+ */
 
 /* Aravis header */
 #include <arv.h>
@@ -427,7 +432,6 @@ void *gigecamera_thread(void *arg)
                             config->actualFrameRate = (double) frameNumber / ((endTime-startTime)/1000000);
                             //printf("\r %u Frames Grabbed (%u dropped) - @ %0.2f FPS (set %0.2f) ",frameNumber,brokenFrameNumber, config->actualFrameRate, frameRate );
                             //printf("Ok %lu/Fail %lu/Under %lu    \r",config->n_completed_buffers,config->n_failures,config->n_underruns);
-
 
                             if (shm_stream!=NULL)
                                        { stream_image(shm_stream->frame,&dataAsImage); }
