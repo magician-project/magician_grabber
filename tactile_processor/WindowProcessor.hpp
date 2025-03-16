@@ -201,7 +201,6 @@ public:
 
     void addData(const DataPoint& new_sample)
     {
-        //Check here ?
         if (processing_function && result_callback && normalization_function && !running_) {
             start_processor();
         }

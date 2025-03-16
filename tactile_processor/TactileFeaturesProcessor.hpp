@@ -77,6 +77,8 @@ class TactileFeaturesProcessor{
                         Fpsd_output_file;
 
 
+    mutable std::mutex fft_mutex_;
+
     // Coefficienti FIR passa-basso (500 Hz, ordine 21)
     const std::vector<double> FIR_COEFFS = {
         -0.0016, -0.0042, -0.0094, -0.0172, -0.0268, -0.0367, -0.0447, -0.0482, -0.0452,
@@ -293,43 +295,50 @@ void ApsdComputation(const std::vector<DataPoint>& result, WindowProcessor& proc
 
     static size_t step = 1;
     static double t0 = 0.0;
+    double energy, time_sec;
     if(step == 1) t0 = result[0].timestamp;
 
     size_t win_size = result.size();
     fftw_complex *out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * win_size);
     double *in = (double*) fftw_malloc(sizeof(double) * win_size);
-    fftw_plan plan = fftw_plan_dft_r2c_1d(win_size, in, out, FFTW_ESTIMATE);
+        
+    if ((in!=NULL) && (out!=NULL))
+    {
+        {
+            std::lock_guard<std::mutex> lock(fft_mutex_);
+            fftw_plan plan = fftw_plan_dft_r2c_1d(win_size, in, out, FFTW_ESTIMATE);
 
-    double energy;
-    double time_sec = t0+((step*(Apsd_WINDOW_SIZE - Apsd_OVERLAP_WND)) / (double)(A_TARGET_FS*A_DECIMATION_FACTOR));
+            energy=0.0;
+            time_sec = t0+((step*(Apsd_WINDOW_SIZE - Apsd_OVERLAP_WND)) / (double)(A_TARGET_FS*A_DECIMATION_FACTOR));
 
-    for (size_t i = 0; i < win_size; i++) {
-        in[i] = result[i].values[0];   // Prendi solo il primo canale
+            for (size_t i = 0; i < win_size; i++) {
+                in[i] = result[i].values[0];   // Prendi solo il primo canale
+            }
+
+            // Esegui la FFT
+            fftw_execute(plan);
+
+            // Calcola l'energia totale
+            for (int i = 0; i < Apsd_WINDOW_SIZE / 2; i++) {
+                double magnitude = out[i][0] * out[i][0] + out[i][1] * out[i][1];  // |X[k]|^2
+                energy += magnitude;
+            }
+
+            energy=energy/win_size;
+
+            fftw_destroy_plan(plan);
+            fftw_free(in);
+            fftw_free(out);
+        }
+        std::vector<DataPoint>ApsdResult({DataPoint(time_sec, std::vector<double>({energy}))});
+        processor.addResults(ApsdResult);
+        // Scrivi su file se abilitato
+        if (processor.write_to_file) {
+            processor.writeToFile(ApsdResult);
+        }
+
+        step += 1;
     }
-
-    // Esegui la FFT
-    fftw_execute(plan);
-
-    // Calcola l'energia totale
-    for (int i = 0; i < Apsd_WINDOW_SIZE / 2; i++) {
-        double magnitude = out[i][0] * out[i][0] + out[i][1] * out[i][1];  // |X[k]|^2
-        energy += magnitude;
-    }
-
-    energy=energy/win_size;
-
-    fftw_destroy_plan(plan);
-    fftw_free(in);
-    fftw_free(out);
-
-    std::vector<DataPoint>ApsdResult({DataPoint(time_sec, std::vector<double>({energy}))});
-    processor.addResults(ApsdResult);
-    // Scrivi su file se abilitato
-    if (processor.write_to_file) {
-        processor.writeToFile(ApsdResult);
-    }
-
-    step += 1;
 }
 
 std::vector<DataPoint> processForcePSD(const std::vector<DataPoint>& window)
@@ -375,50 +384,52 @@ void FpsdComputation(const std::vector<DataPoint>& result, WindowProcessor& proc
     static size_t step = 1;
     static double t0 = 0.0;
     if(step == 1) t0 = result[0].timestamp;
-
+    double energy , time_sec;
     size_t win_size = result.size();
-    //std::cerr<<"win size is "<<win_size;
+    
     fftw_complex *out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * win_size);
     double *in = (double*) fftw_malloc(sizeof(double) * win_size );
 
 
     if ((in!=NULL) && (out!=NULL))
     {
-    fftw_plan plan = fftw_plan_dft_r2c_1d(win_size, in, out, FFTW_ESTIMATE);
-
-    double energy;
-    double time_sec = t0+((step*(Fpsd_WINDOW_SIZE - Fpsd_OVERLAP_WND)) / (double)(F_TARGET_FS*F_DECIMATION_FACTOR));
-
-    for (size_t i = 0; i < win_size; i++)
-    {
-        if (result[i].values.size()!=0)
         {
-         in[i] = result[i].values[0];   // Prendi solo il primo canale
+            std::lock_guard<std::mutex> lock(fft_mutex_);
+            fftw_plan plan = fftw_plan_dft_r2c_1d(win_size, in, out, FFTW_ESTIMATE);
+
+            energy = 0.0;
+            time_sec = t0+((step*(Fpsd_WINDOW_SIZE - Fpsd_OVERLAP_WND)) / (double)(F_TARGET_FS*F_DECIMATION_FACTOR));
+
+            for (size_t i = 0; i < win_size; i++)
+            {
+                if (result[i].values.size()!=0)
+                {
+                in[i] = result[i].values[0];   // Prendi solo il primo canale
+                }
+            }
+
+            // Esegui la FFT
+            fftw_execute(plan);
+
+            // Calcola l'energia totale
+            for (int i = 0; i < win_size / 2; i++)
+            {
+                double magnitude = out[i][0] * out[i][0] + out[i][1] * out[i][1];  // |X[k]|^2
+                energy += magnitude;
+            }
+
+            energy=energy/win_size;
+
+            fftw_destroy_plan(plan);
+            fftw_free(in);
+            fftw_free(out);
         }
-    }
 
-    // Esegui la FFT
-    fftw_execute(plan);
-
-    // Calcola l'energia totale
-    for (int i = 0; i < win_size / 2; i++)
-    {
-        double magnitude = out[i][0] * out[i][0] + out[i][1] * out[i][1];  // |X[k]|^2
-        energy += magnitude;
-    }
-
-    energy=energy/win_size;
-
-    fftw_destroy_plan(plan);
-    fftw_free(in);
-    fftw_free(out);
-
-
-    std::vector<DataPoint>FpsdResult({DataPoint(time_sec, std::vector<double>({energy}))});
-    processor.addResults(FpsdResult);
-    // Scrivi su file se abilitato
-    if (processor.write_to_file) { processor.writeToFile(FpsdResult); }
-    step += 1;
+        std::vector<DataPoint>FpsdResult({DataPoint(time_sec, std::vector<double>({energy}))});
+        processor.addResults(FpsdResult);
+        // Scrivi su file se abilitato
+        if (processor.write_to_file) { processor.writeToFile(FpsdResult); }
+        step += 1;
     }
 }
 
