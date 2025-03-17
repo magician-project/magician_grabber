@@ -132,8 +132,8 @@ static void broadcasting(unsigned long frameNumber)
 {
   const int update = 10;
   if (frameNumber%update > update /2)
-     { printf("((( )))"); } else
-     { printf("(((" RED "•" NORMAL ")))"); }
+     { fprintf(stderr,"((( )))"); } else
+     { fprintf(stderr,"(((" RED "•" NORMAL ")))"); }
 }
 
 

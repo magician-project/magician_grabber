@@ -263,7 +263,7 @@ int process_accelerometer_data(ArduinoSerialConfig *arduino_config, char enabled
 }
 
 
-int arduino_call_string_callback(ArduinoSerialConfig *arduino_config, unsigned long timestamp, const char *line, unsigned int lineLength)
+int arduino_call_string_callback_generic(ArduinoSerialConfig *arduino_config, unsigned long timestamp, const char *line, unsigned int lineLength)
 {
     if (arduino_config->callback)
     {
@@ -274,6 +274,49 @@ int arduino_call_string_callback(ArduinoSerialConfig *arduino_config, unsigned l
         return callback_func(arduino_config, timestamp, line, lineLength);  // Call the function
     }
     return 0;  // Indicate failure if no callback is set
+}
+
+
+
+static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp,const char * line,unsigned int lineLength)
+{
+    if (arduino_config->callback)
+    {
+    //fprintf(stderr,"Arduino callback for %s received %s\n",arduino_config->csv_name,line);
+
+    unsigned long dev_timestamp=0;
+
+    int Button1;
+    int Distance1;
+    int Distance2;
+    int Distance3;
+
+    int Light1;
+    int Light2;
+    int Light3;
+    int Light4;
+    int Light5;
+    int Light6;
+
+    // Parse the comma-separated values
+    if (sscanf(line, "%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1, &Distance1, &Distance2, &Distance3, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6) == 11)
+    {
+         // Cast back to the correct function pointer type before calling
+        int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int) =
+                (int (*)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int)) arduino_config->callback;
+
+        return callback_func(arduino_config, timestamp, Button1, Distance1, Distance2, Distance3, Light1, Light2, Light3, Light4, Light5, Light6);  // Call the function
+
+        //printf("Parsed values - Timestamp: %lu, Button1: %d, Distance1: %d, Distance2: %d, Distance3: %d\n", dev_timestamp, Button1, Distance1, Distance2, Distance3);
+        return 1;  // Success
+    } else
+    {
+        fprintf(stderr, "Error: Invalid format in line: %s\n", line);
+        return 0; // Error in parsing
+    }
+
+    }
+    return 0;
 }
 
 

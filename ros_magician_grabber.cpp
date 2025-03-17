@@ -1,17 +1,12 @@
-/** @file multiModalGrabber.c
- *  @brief This is a high-performance standalone grabber for the Magician EU Project
- *  It's only dependency is the Aravis 0.10 GiGE SDK ( https://github.com/AravisProject/aravis )
- *  that should be installed on the system.
- *
- *  Running the grabber to record data:
- *  ./magician_grabber --output targetDatasetDirectoryHere --all --time 30 --rt --fps 22
- *
- *  The grabber can also stream data using shared memory ( https://github.com/AmmarkoV/SharedMemoryVideoBuffers )
- *  You can do so by issuing:
- *  ./magician_grabber --camera --stream --forever
- *
- *  @author Ammar Qammaz (AmmarkoV)
- */
+//To compile me :
+//            colcon build
+//To run me :
+//             build/rclcpp_magician_grabber/magician_grabber 
+
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/float32.hpp"
+
 
 //Regular imports
 #include <stdio.h>
@@ -37,7 +32,7 @@
 
 #include "performance.h"
 
-static const char MagicianGrabberVersion[]="0.92";
+static const char MagicianROSGrabberVersion[]="0.0.0";
 
 volatile sig_atomic_t stop = 0;
 
@@ -85,7 +80,6 @@ int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
     return 1;
 }
 
-
 int noOutputDirectory(GlobalConfig *cfg)
 {
   if (cfg==0) { return 0; }
@@ -115,27 +109,218 @@ int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 }
 
 
-int main (int argc, char **argv)
+class MagicianGrabber : public rclcpp::Node
 {
-    // Show Welcome Message
-    banner(MagicianGrabberVersion);
+ public:
+    MagicianGrabber() : Node("magician_grabber")
+    {
+        //ATI Force Sensor 
+        //--------------------------------------------------------------------------
+        publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("fX", 10);
+        publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("fY", 10);
+        publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("fZ", 10);
+        publishertX_ = this->create_publisher<std_msgs::msg::Float32>("tX", 10);
+        publishertY_ = this->create_publisher<std_msgs::msg::Float32>("tY", 10);
+        publishertZ_ = this->create_publisher<std_msgs::msg::Float32>("tZ", 10);
+
+        //Teensy Accelerometer 
+        //--------------------------------------------------------------------------
+        publisheraccX_ = this->create_publisher<std_msgs::msg::Float32>("accX", 10);
+        publisheraccY_ = this->create_publisher<std_msgs::msg::Float32>("accY", 10);
+        publisheraccZ_ = this->create_publisher<std_msgs::msg::Float32>("accZ", 10);
+
+        //Light Controller / Distance Sensors 
+        //--------------------------------------------------------------------------
+        publisherButton_ = this->create_publisher<std_msgs::msg::Float32>("button", 10);
+        publisherD1_ = this->create_publisher<std_msgs::msg::Float32>("distance1", 10);
+        publisherD2_ = this->create_publisher<std_msgs::msg::Float32>("distance2", 10);
+        publisherD3_ = this->create_publisher<std_msgs::msg::Float32>("distance3", 10);
+        publisherL1_ = this->create_publisher<std_msgs::msg::Float32>("light1", 10);
+        publisherL2_ = this->create_publisher<std_msgs::msg::Float32>("light2", 10);
+        publisherL3_ = this->create_publisher<std_msgs::msg::Float32>("light3", 10);
+        publisherL4_ = this->create_publisher<std_msgs::msg::Float32>("light4", 10);
+        publisherL5_ = this->create_publisher<std_msgs::msg::Float32>("light5", 10);
+        publisherL6_ = this->create_publisher<std_msgs::msg::Float32>("light6", 10);
+        
+    }
+
+    void update_Forces(float fX, float fY, float fZ)
+    {
+        std_msgs::msg::Float32 msg1, msg2, msg3;
+        msg1.data = fX;
+        msg2.data = fY;
+        msg3.data = fZ;
+
+        publisherfX_->publish(msg1);
+        publisherfY_->publish(msg2);
+        publisherfZ_->publish(msg3);
+
+        //RCLCPP_INFO(this->get_logger(), "Published Forces: %.2f, %.2f, %.2f", fX, fY, fZ);
+    }
+
+    void update_Torques(float tX, float tY, float tZ)
+    {
+        std_msgs::msg::Float32 msg1, msg2, msg3;
+        msg1.data = tX;
+        msg2.data = tY;
+        msg3.data = tZ;
+
+        publishertX_->publish(msg1);
+        publishertY_->publish(msg2);
+        publishertZ_->publish(msg3);
+
+        //RCLCPP_INFO(this->get_logger(), "Published Torques: %.2f, %.2f, %.2f", tX, tY, tZ);
+    }
+
+
+    void update_Accelerometer(float accX, float accY, float accZ)
+    {
+        std_msgs::msg::Float32 msg1, msg2, msg3;
+        msg1.data = accX;
+        msg2.data = accY;
+        msg3.data = accZ;
+
+        publisheraccX_->publish(msg1);
+        publisheraccY_->publish(msg2);
+        publisheraccZ_->publish(msg3);
+
+        //RCLCPP_INFO(this->get_logger(), "Published Accelerations: %.2f, %.2f, %.2f", accX, accY, accZ);
+    }
+
+
+    void update_Button(float button)
+    {
+        std_msgs::msg::Float32 msg1;
+        msg1.data = button; 
+
+        publisherButton_->publish(msg1);
+
+
+        //RCLCPP_INFO(this->get_logger(), "Published Buttons: %.2f", button);
+    }
+
+
+    void update_Lights(float L1, float L2, float L3, float L4, float L5, float L6)
+    {
+        std_msgs::msg::Float32 msg1, msg2, msg3, msg4, msg5, msg6;
+        msg1.data = L1;
+        msg2.data = L2;
+        msg3.data = L3;
+        msg4.data = L4;
+        msg5.data = L5;
+        msg6.data = L6;
+
+        publisherL1_->publish(msg1);
+        publisherL2_->publish(msg2);
+        publisherL3_->publish(msg3);
+        publisherL4_->publish(msg4);
+        publisherL5_->publish(msg5);
+        publisherL6_->publish(msg6);
+
+        //RCLCPP_INFO(this->get_logger(), "Published Light: %.2f, %.2f, %.2f", L1, L2, L3, L4, L5, L6);
+    }
+
+    void update_Distances(float D1, float D2, float D3)
+    {
+        std_msgs::msg::Float32 msg1, msg2, msg3;
+        msg1.data = D1;
+        msg2.data = D2;
+        msg3.data = D3; 
+
+        publisherD1_->publish(msg1);
+        publisherD2_->publish(msg2);
+        publisherD3_->publish(msg3);
+
+        //RCLCPP_INFO(this->get_logger(), "Published Distances: %.2f, %.2f, %.2f", D1, D2, D3);
+    }
+
+
+private:
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfX_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfY_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfZ_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertX_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertY_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertZ_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccX_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccY_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccZ_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherButton_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherD1_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherD2_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherD3_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherL1_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherL2_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherL3_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherL4_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherL5_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherL6_;
+};
+
+// Global pointer to the node
+std::shared_ptr<MagicianGrabber> global_node;
+
+// C-style callback function
+extern "C" int ros_force_callback(ATINetFTConfig *atinetft_config,double fX, double fY, double fZ, double tX, double tY, double tZ)
+{
+    if (global_node) 
+    {
+        global_node->update_Forces(fX, fY, fZ);
+        global_node->update_Torques(tX, tY, tZ);
+        return 1;
+    }
+    return 0;
+}
+
+extern "C" int ros_accelerometer_callback(ArduinoSerialConfig *arduino_config, unsigned long timestamp, unsigned long dev_timestamp, double accX, double accY, double accZ)
+{
+    if (global_node) 
+    {
+        global_node->update_Accelerometer(accX, accY, accZ); 
+        return 1;
+    }
+    return 0;
+}
+
+extern "C" int ros_controller_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp, int button,
+                               int D1,int D2, int D3,
+                               int Light1,int Light2,int Light3,int Light4,int Light5,int Light6)
+{
+    if (global_node) 
+    {
+        global_node->update_Button(button); 
+        global_node->update_Distances(D1, D2, D3); 
+        global_node->update_Lights(Light1, Light2, Light3, Light4, Light5, Light6); 
+        return 1;
+    }
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    rclcpp::init(argc, argv);
+    global_node = std::make_shared<MagicianGrabber>();
+
+
+
+    banner(MagicianROSGrabberVersion);
 
     // Handle Ctrl+C to stop recording gracefully
     signal(SIGINT, handle_sigint);
 
     // Global flag for termination
     char keep_running = 1;
-    char run_forever  = 0;
+    char run_forever  = 1;
     unsigned char countdown    = 0;
 
     // Modules available to use
     char interceptKeyboard = 1;
     char useRAM       = 0;
-    char useArduino   = 0;
-    char useTeensy    = 0;
-    char useCamera    = 0;
-    char useATIForce  = 0;
-    char streamCamera = 0;
+    char useArduino   = 1;
+    char useTeensy    = 1;
+    char useCamera    = 1;
+    char useATIForce  = 1;
+    char streamCamera = 1;
 
     #if TACTILE
     char calculateTactileFeatures    = 0;
@@ -145,7 +330,8 @@ int main (int argc, char **argv)
     // Grabber Configurations
     GlobalConfig cfg={0};
     setOutputDirectory(&cfg, "./");
-    cfg.maxTimeToGrabForInSeconds = 30; //Grab for 30 seconds by default
+    noOutputDirectory(&cfg);
+    cfg.maxTimeToGrabForInSeconds = 0; //Grab for 30 seconds by default
 
     // Camera Default settings
     unsigned int width      = 2448;
@@ -163,202 +349,10 @@ int main (int argc, char **argv)
     char arduinoUseDistanceLight[] = {"a\n"};
     char * arduinoExtraCommand = arduinoUseRoundLight; //0 Or Always set round lights on
 
-    //Parse command line arguments
-    for (int i=0; i<argc; i++)
-    {
-        if (strcmp(argv[i], "--help") == 0)
-        {
-         print_help();
-         exit(0);
-        } else
-        if ( (strcmp(argv[i],"-o")==0) || (strcmp(argv[i],"--output")==0) )
-        {
-            if (argc>i+1)
-            { setOutputDirectory(&cfg,argv[i+1]); }
-            else
-            { fprintf(stderr,"Failed setting output Path, not enough arguments! \n"); }
-        }
-        else if (strcmp(argv[i],"--nooutput")==0)
-        {
-            noOutputDirectory(&cfg);
-            fprintf(stderr,"File output disabled\n");
-        }
-        else if (strcmp(argv[i],"--countdown")==0)
-        {
-            countdown = (unsigned char) atoi(argv[i+1]);
-            fprintf(stderr,"Will perform countdown before starting\n");
-        }
-        else if (strcmp(argv[i],"--nokb")==0)
-        {
-            interceptKeyboard = 0;
-            fprintf(stderr,"Will not intercept keyboard presses\n");
-        }
-        else if (strcmp(argv[i],"--kb")==0)
-        {
-            interceptKeyboard = 1;
-            fprintf(stderr,"Will intercept keyboard presses\n");
-        }
-        else if (strcmp(argv[i],"--ram")==0)
-        {
-            useRAM = 1;
-            fprintf(stderr,"Will use RAM to store data\n");
-        }
-        else if (strcmp(argv[i],"--size")==0)
-        {
-            width  = atoi(argv[i+1]);
-            height = atoi(argv[i+2]);
-            fprintf(stderr,"Camera size set to %u x %u pixels \n",width,height);
-        }
-        else if (strcmp(argv[i],"--exposure")==0)
-        {
-            exposure=atoi(argv[i+1]);
-            fprintf(stderr,"Exposure will be set to %u μsec \n",exposure);
-        }
-        else if (strcmp(argv[i],"--gain")==0)
-        {
-            gain=atof(argv[i+1]);
-            fprintf(stderr,"Gain will be set to %f \n",gain);
-        }
-        else if (strcmp(argv[i],"--fps")==0)
-        {
-            frameRate=atof(argv[i+1]);
-            fprintf(stderr,"Framerate will be set to %f Hz \n",frameRate);
-            if (frameRate>10)
-            {
-              fprintf(stderr,"Consider using --ram to write to a tmpfs to support this framerate without frame drops!\n");
-            }
-        }
-        else if (strcmp(argv[i],"--blacklevel")==0)
-        {
-            blackLevel=atof(argv[i+1]);
-            fprintf(stderr,"Black Level will be set to %f μsec \n",blackLevel);
-        }
-        else if (strcmp(argv[i],"--time")==0)
-        {
-            run_forever=0;
-            cfg.maxTimeToGrabForInSeconds=atoi(argv[i+1]);
-            fprintf(stderr,"Setting frame grab to %lu \n",cfg.maxTimeToGrabForInSeconds);
-        }
-        else if (strcmp(argv[i],"--forever")==0)
-        {
-            run_forever=1;
-            fprintf(stderr,"Running forever..\n");
-        }
-        else if (strcmp(argv[i],"--camera")==0)
-        {
-            useCamera = 1;
-            fprintf(stderr,"Activating Camera\n");
-        }
-        else if (strcmp(argv[i],"--force")==0)
-        {
-            useATIForce = 1;
-            fprintf(stderr,"Activating Force\n");
-        }
-        else if (strcmp(argv[i],"--features")==0)
-        {
-            #if TACTILE
-              calculateTactileFeatures = 1;
-              fprintf(stderr,"Activating Force\n");
-            #else
-              fprintf(stderr,"This build of magician grabber has no tactile features, try magician_grabber_tactile\n");
-              exit(1);
-            #endif // TACTILE
-        }
-        else if (strcmp(argv[i],"--accelerometer")==0)
-        {
-            useTeensy = 1;
-            fprintf(stderr,"Activating Force\n");
-        }
-        else if (strcmp(argv[i],"--distance")==0)
-        {
-            useArduino = 1;
-            fprintf(stderr,"Activating Arduino\n");
-        }
-        else if (strcmp(argv[i],"--dlight")==0)
-        {
-            arduinoExtraCommand = arduinoUseDistanceLight;
-            fprintf(stderr,"Using Lighting based on distance\n");
-        }
-        else if (strcmp(argv[i],"--rlight")==0)
-        {
-            arduinoExtraCommand = arduinoUseRoundLight;
-            fprintf(stderr,"Using Lighting based on round robin\n");
-        }
-        else if (strcmp(argv[i],"--rt")==0)
-        {
-            fprintf(stderr,"Trying to set real-time priority\n");
-
-            if (elevate_nice_priority(-20))
-            //if (set_process_nice(-10))
-            //if ( set_realtime_thread_priority() )
-                           { drop_privileges(0); } //drop_privileges("nobody");
-        }
-        else if (strcmp(argv[i],"--all")==0)
-        {
-            useArduino = 1;
-            useTeensy = 1;
-            useATIForce = 1;
-            useCamera = 1;
-            //calculateTactileFeatures = 1;
-            fprintf(stderr,"Activating All Devices\n");
-        }
-        else if (strcmp(argv[i],"--stream")==0)
-        {
-            streamCamera = 1;
-            useCamera    = 1;
-            useArduino   = 1;
-            run_forever  = 1;
-            fprintf(stderr,"Streaming camera data to shared memory\n");
-            noOutputDirectory(&cfg);
-            fprintf(stderr,"File output disabled, use --output with a later command to re-enable\n");
-        }
-        else if (strcmp(argv[i],"--scan")==0)
-        {
-          fprintf(stderr,"Activating Arduino\n");
-          mainT();
-          exit(0);
-        }
-
-
-
-    } // Process commandline input
-
-
-   if ( (!useArduino) && (!useTeensy) && (!useCamera) && (!useATIForce) )
-   {
-     fprintf(stderr,"No Input Sources selected! \n");
-     fprintf(stderr,"Please use --camera --force --accelerometer --distance\n");
-     exit(0);
-   }
-
-
-   if (useRAM)
-   {
-       snprintf(cfg.outputDirectoryOriginal,1024,"%s",cfg.outputDirectory);
-       int i = system("sudo mkdir tmpfs");
-       if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs directory to mount tmpfs \n" NORMAL); }
-
-       i = system("sudo mount -t tmpfs -o size=4G tmpfs tmpfs/");
-       if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs mount.. :(\n" NORMAL); return 1; }
-       snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
-   }
-
-
-   if (countdown!=0)
-   {
-      fprintf(stderr,"Performing initial countdown : ");
-      for (int i=0; i<countdown; i++)
-       {
-         usleep(1000000); //1 sec
-         fprintf(stderr,".");
-       }
-      fprintf(stderr,"\n");
-   }
 
 
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)
     unsigned long acquisitionStartTime = GetTickCountMicroseconds();
-
 
     pthread_t gigecamera_tid, arduino_tid, teensy_tid, atinetft_tid;
 
@@ -366,9 +360,9 @@ int main (int argc, char **argv)
     // Initialize Configurations
     //To debug aravis connection use : arv-camera-test-0.10  -d stream
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", width, height, exposure, gain, blackLevel, frameRate, 0, NULL, &keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL };
-    ATINetFTConfig atinetft_config     = {&cfg, "192.168.200.11",  49152, "force.csv",  NULL, &keep_running,0 , 0, 0, 0.0, NULL};
-    ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM1",    "accelerometer.csv", 115200, NULL, &keep_running, 0, NULL , 0, 0, 0.0, NULL};
-    ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyACM0",    "controller.csv",    115200, NULL, &keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, NULL};
+    ATINetFTConfig atinetft_config     = {&cfg, "192.168.200.11",  49152, "force.csv",  NULL, &keep_running,0 , 0, 0, 0.0, (void*) ros_force_callback};
+    ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM1",    "accelerometer.csv", 115200, NULL, &keep_running, 0, NULL , 0, 0, 0.0,(void*)  ros_accelerometer_callback};
+    ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyACM0",    "controller.csv",    115200, NULL, &keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};
 
 
     //Try to make arduino wake up correctly
@@ -460,12 +454,15 @@ int main (int argc, char **argv)
 
     unsigned long startTime = GetTickCountMicroseconds();
     unsigned long currentTime = startTime;
-    printf("Data collection started.\n");
+    printf("ROS Node started.\n");
     // Run until flag is cleared (placeholder for user signal handling)
     while (keep_running)
     {
+        rclcpp::spin(global_node);
+    
+
         // Simulate main loop work
-        usleep(1000);
+        //usleep(1000);
 
         if (interceptKeyboard)
              { key = get_keystroke(); }
@@ -491,27 +488,27 @@ int main (int argc, char **argv)
         unsigned long runningTimeInSeconds = (currentTime - startTime) / 1000000;
 
 
-        printf("\r");
+        fprintf(stderr,"\r");
         //-----------------------------------------------------------------------------------------------------------------
 
         if (streamCamera) { broadcasting(camera_config.framesCaptured); }
-        if (run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
+        if (run_forever)  { fprintf(stderr,GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
                           {
-                           printf(GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
+                           fprintf(stderr,GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
                            progress_bar(runningTimeInSeconds,cfg.maxTimeToGrabForInSeconds);
                           }
 
         if (useCamera)
             {
-             printf("|Cam %lu %0.2fHz ",camera_config.framesCaptured, camera_config.actualFrameRate);
-             printf(" Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
+             fprintf(stderr,"|Cam %lu %0.2fHz ",camera_config.framesCaptured, camera_config.actualFrameRate);
+             fprintf(stderr," Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
             }
 
-        if (useArduino)  { printf("|Arduino %0.2fHz/%lu samples",arduino_config.Hz, arduino_config.receivedDataFrames ); }
-        if (useTeensy)   { printf("|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
-        if (useATIForce) { printf("|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
+        if (useArduino)  { fprintf(stderr,"|Arduino %0.2fHz/%lu samples",arduino_config.Hz, arduino_config.receivedDataFrames ); }
+        if (useTeensy)   { fprintf(stderr,"|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
+        if (useATIForce) { fprintf(stderr,"|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
         //-----------------------------------------------------------------------------------------------------------------
-        printf("|   \r");
+        fprintf(stderr,"|   \r");
 
 
 
@@ -533,30 +530,17 @@ int main (int argc, char **argv)
     if (useATIForce) { fprintf(stderr,"Releasing ATI\n");     pthread_join(atinetft_tid, NULL);   }
 
     printf("\n\n");
-
-   if (useRAM)
-   {
-       printf("\n\nWriting Data from RAM to Disk..\n");
-       printf("This will take some time..\n");
-       char command[4096]={0};
-
-       //  mv tmpfs/* %s/  OR  rsync --info=progress2  -av tmpfs/ %s/
-       snprintf(command,4096,"du -sh tmpfs/ && rsync --info=progress2 -a --remove-source-files tmpfs/ %s/ && find tmpfs/ -type d -empty -delete && sync && sleep 35 && sudo umount tmpfs/ && rmdir tmpfs/",cfg.outputDirectoryOriginal);
-       int i = system(command);
-       if (i!=0)  { fprintf(stderr,RED "Failed copying data from RAM to Disk, check folder tmpfs/ for surviving data.. :(\n" NORMAL); }
-   }
-
-
+ 
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)
     unsigned long elapsedAcquisitionTime = GetTickCountMicroseconds() - acquisitionStartTime;
     printf("Data collection terminated after %0.2f seconds\n", (double) elapsedAcquisitionTime / 1000000.0);
 
 
     usleep(1000);
-    exit(0); //Camera spawns another thread so there is a problem making it join again..
+    
+
+
+    rclcpp::shutdown();
     if (useCamera)   { fprintf(stderr,"Releasing Camera\n");  pthread_join(gigecamera_tid, NULL); }
-
-
-    return 0;
+return 0;
 }
-
