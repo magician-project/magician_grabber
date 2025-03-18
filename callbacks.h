@@ -21,21 +21,9 @@ static int force_callback(ATINetFTConfig *atinetft_config,unsigned long timestam
 }
 
 
-
 static int accelerometer_callback(ArduinoSerialConfig *arduino_config, unsigned long timestamp, unsigned long dev_timestamp, double accX, double accY, double accZ)
 {
-    fprintf(stderr,"Accelerometer callback for %s received %f %f %f %f %f %f\n",arduino_config->csv_name,accX,accY,accZ);
-    return 0;
-}
-
-
-static int distance_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp,unsigned int D1,unsigned int D2,unsigned int D3)
-{
-    return 0;
-}
-
-static int button_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp,unsigned int B1)
-{
+    fprintf(stderr,"Accelerometer callback for %s received %f %f %f\n",arduino_config->csv_name,accX,accY,accZ);
     return 0;
 }
 
@@ -47,6 +35,7 @@ static int controller_callback(ArduinoSerialConfig *arduino_config,unsigned long
     fprintf(stderr,"Button: %d \n",button);
     fprintf(stderr,"Distances: %d %d %d \n",D1,D2,D3);
     fprintf(stderr,"Lights: %d %d %d %d %d %d \n",Light1,Light2,Light3,Light4,Light5,Light6);
+    return 0;
 }
 
 #ifdef __cplusplus

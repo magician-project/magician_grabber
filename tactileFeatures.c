@@ -59,7 +59,7 @@ void *tactile_thread(void *arg)
         char fullCSVOutputPath[2048]={0};
 
         //-----------------------------------------------------------------------------------
-        snprintf(fullCSVOutputPath,2048,"%s/FrFD.csv",cfg->outputDirectory);
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/friction.csv",cfg->outputDirectory);
         FrFD = fopen(fullCSVOutputPath, "w");
         if (!FrFD)
         {
@@ -73,7 +73,7 @@ void *tactile_thread(void *arg)
 
 
         //-----------------------------------------------------------------------------------
-        snprintf(fullCSVOutputPath,2048,"%s/AsFD.csv",cfg->outputDirectory);
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/acceleration_spikeness.csv",cfg->outputDirectory);
         AsFD = fopen(fullCSVOutputPath, "w");
         if (!AsFD)
         {
@@ -87,7 +87,7 @@ void *tactile_thread(void *arg)
 
 
         //-----------------------------------------------------------------------------------
-        snprintf(fullCSVOutputPath,2048,"%s/ApsdFD.csv",cfg->outputDirectory);
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/acceleration_psd.csv",cfg->outputDirectory);
         ApsdFD = fopen(fullCSVOutputPath, "w");
         if (!ApsdFD)
         {
@@ -101,7 +101,7 @@ void *tactile_thread(void *arg)
 
 
         //-----------------------------------------------------------------------------------
-        snprintf(fullCSVOutputPath,2048,"%s/FpsdFD.csv",cfg->outputDirectory);
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/force_psd.csv",cfg->outputDirectory);
         FpsdFD = fopen(fullCSVOutputPath, "w");
         if (!FpsdFD)
         {
