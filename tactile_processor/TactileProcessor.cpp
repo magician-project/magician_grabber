@@ -13,20 +13,20 @@
 #define A_input_fs 4000
 #define A_dec_fact 1
 
-#define Fr_win_size 128
+#define Fr_win_size 128 * F_dec_fact
 #define Fr_ovlp 0.5
 #define Fr_highcutf 450.0
 #define Fr_lowcutf 10.0
 
-#define As_win_size 2000
+#define As_win_size 2000 * A_dec_fact
 #define As_ovlp 0.5
 #define As_highcutf 100.0
 
-#define Fpsd_win_size 128
+#define Fpsd_win_size 5 * F_dec_fact
 #define Fpsd_ovlp 0.8
 #define Fpsd_lowcutf 5.0
 
-#define Apsd_win_size 128
+#define Apsd_win_size 20 * A_dec_fact
 #define Apsd_ovlp 0.8
 #define Apsd_lowcutf 5.0
 
@@ -148,10 +148,10 @@ int tactile_main()
 int main (int argc, char **argv)
 #endif
 {
-    std::string F_input_file = "input.txt";
+    std::string F_input_file = "ForceRaw.txt";
     std::ifstream infile(F_input_file);
 
-    std::string A_input_file = "input1.txt";
+    std::string A_input_file = "AccRaw.txt";
     std::ifstream infile1(A_input_file);
 
     double timestampF, fx, fy, fz, flagF, timestampA, ax, ay, az, flagA;
@@ -184,7 +184,7 @@ int main (int argc, char **argv)
         processor.addAccelerationData({timestampA, {ax, ay, az}});
     }
 
-    while (processor.isProcessing())
+    /*while (processor.isProcessing())
     {
         //std::cout << "?";
         std::vector<DataPoint> results = processor.getFrictionResults(1);
@@ -197,9 +197,7 @@ int main (int argc, char **argv)
             }
             std::cout << std::endl;
         }
-    }
-
-    //std::cout << "Done";
+    }*/
 
     infile.close();
     infile1.close();
