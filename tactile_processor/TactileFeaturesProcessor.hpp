@@ -22,7 +22,7 @@ extern "C"
 {
 #endif
 */
-//Unmangled interface for the code!
+// Unmangled interface for the code!
 int tactile_add_force(unsigned long timestamp, double fX , double fY, double fZ);
 int tactile_add_acc(unsigned long timestamp, double accX , double accY, double accZ);
 
@@ -33,7 +33,7 @@ int tactile_write_disk(FILE* FrFD, FILE* AsFD, FILE* ApsdFD , FILE* FpsdFD);
 #endif
 */
 
-// Classe per calcolare media e deviazione standard in modo incrementale
+// Class to calculate mean and standard deviation incrementally
 class IncrementalStats {
     private:
         double mean;
@@ -81,14 +81,14 @@ class TactileFeaturesProcessor{
 
     mutable std::mutex fft_mutex_;
 
-    // Coefficienti FIR passa-basso (500 Hz, ordine 21)
+    // FIR low-pass coefficients (500 Hz, order 21)
     const std::vector<double> FIR_COEFFS = {
         -0.0016, -0.0042, -0.0094, -0.0172, -0.0268, -0.0367, -0.0447, -0.0482, -0.0452,
         -0.0345, -0.0169, 0.0064, 0.0324, 0.0578, 0.0789, 0.0923, 0.0953, 0.0865, 0.0657,
         0.0340, -0.0043, -0.0448
     };
 
-    // **Filtro FIR passa-basso anti-aliasing**
+    // **Anti-aliasing FIR low-pass filter**
     std::vector<double> applyFIRFilter(const std::vector<double>& signal) {
         size_t N = signal.size();
         std::vector<double> output(N, 0.0);
@@ -102,7 +102,7 @@ class TactileFeaturesProcessor{
         return output;
     }
 
-    // **Decimazione del segnale**
+    // **Signal decimation**
     std::vector<double> downsample(const std::vector<double>& signal, int decimation_factor) {
         if (decimation_factor <= 1) return signal;
 
@@ -113,17 +113,17 @@ class TactileFeaturesProcessor{
         return downsampled;
     }
 
-    // **Filtro Butterworth a fase zero (passa-basso o passa-alto)**
+    // **Zero-phase Butterworth filter (low-pass or high-pass)**
     void applyZeroPhaseButterworth(std::vector<double>& signal, bool lowpass, double cutoff_freq, float target_fs) {
         Iir::Butterworth::LowPass<4> lp_filter;
         Iir::Butterworth::HighPass<4> hp_filter;
         if (lowpass) lp_filter.setup(target_fs, cutoff_freq);
         else hp_filter.setup(target_fs, cutoff_freq);
 
-        // Passaggio avanti
+        // Forward pass
         for (double& sample : signal) sample = lowpass ? lp_filter.filter(sample) : hp_filter.filter(sample);
 
-        // Reset filtro e passaggio indietro
+        // Reset filter and backward pass
         if (lowpass) lp_filter.reset();
         else hp_filter.reset();
 
@@ -132,7 +132,7 @@ class TactileFeaturesProcessor{
         }
     }
 
-    // Funzione per il calcolo della media mobile (SMA)
+    // Function for calculating the moving average (SMA)
     std::vector<double> moving_average(const std::vector<double>& data, size_t window_size) {
         std::vector<double> sma(data.size(), 0.0);
         double sum = 0.0;
@@ -151,17 +151,17 @@ class TactileFeaturesProcessor{
     void applyHannWindow(std::vector<double>& window) {
         int N = window.size();
         for (int i = 0; i < N; i++) {
-            window[i] *= 0.5 * (1 - cos(2 * M_PI * i / (N - 1)));  // Finestra di Hann
+            window[i] *= 0.5 * (1 - cos(2 * M_PI * i / (N - 1)));  // Hann window
         }
     }
 
 
-    // Funzione di elaborazione compatibile con segnali mono/multi-canale
+    // Processing function compatible with mono/multi-channel signals
     std::vector<DataPoint> processFriction(const std::vector<DataPoint>& window) {
         size_t win_size = window.size();
         size_t num_channels = window[0].numChannels();
 
-        // Estrarre i dati per ciascun canale
+        // Extract data for each channel
         std::vector<std::vector<double>> channels(num_channels, std::vector<double>(win_size));
         for (size_t i = 0; i < win_size; i++) {
             for (size_t j = 0; j < num_channels; j++) {
@@ -169,7 +169,7 @@ class TactileFeaturesProcessor{
             }
         }
 
-        // Filtraggio e decimazione per ogni canale
+        // Filtering and decimation for each channel
         for (size_t j = 0; j < num_channels; j++) {
             channels[j] = applyFIRFilter(channels[j]);
             applyZeroPhaseButterworth(channels[j], true, Fr_HIGH_CUT_F, F_TARGET_FS);
@@ -177,7 +177,7 @@ class TactileFeaturesProcessor{
             channels[j] = downsample(channels[j], F_DECIMATION_FACTOR);
         }
 
-        // Creazione della finestra elaborata decimata
+        // Create the processed decimated window
         size_t new_size = channels[0].size();
         std::vector<DataPoint> processed_window(new_size, DataPoint(0, num_channels));
         for (size_t i = 0; i < new_size; i++) {
@@ -189,7 +189,7 @@ class TactileFeaturesProcessor{
         return processed_window;
     }
 
-    // Callback per mostrare i risultati
+    // Callback to display results
     void FrResult(const std::vector<DataPoint>& result, WindowProcessor& processor) {
         std::vector<DataPoint> tmp = std::vector<DataPoint>(result.begin(), result.begin() + processor.step / F_DECIMATION_FACTOR);
         std::vector<DataPoint> friction;
@@ -197,20 +197,20 @@ class TactileFeaturesProcessor{
             friction.push_back(DataPoint(dp.timestamp, std::vector<double>({abs(dp.values[0]-dp.values[1])})));
         }
         processor.addResults(friction);
-        // Scrivi su file se abilitato
+        // Write to file if enabled
         if (processor.write_to_file) {
             processor.writeToFile(friction);
         }
     }
 
-// Funzione di elaborazione compatibile con segnali mono/multi-canale
+// Processing function compatible with mono/multi-channel signals
 std::vector<DataPoint> processAccSpike(const std::vector<DataPoint>& window) {
     static IncrementalStats stats;
 
     size_t win_size = window.size();
     size_t num_channels = window[0].numChannels();
 
-    // Estrarre i dati per ciascun canale
+    // Extract data for each channel
     std::vector<std::vector<double>> channels(num_channels, std::vector<double>(win_size));
     for (size_t i = 0; i < win_size; i++) {
         for (size_t j = 0; j < num_channels; j++) {
@@ -219,7 +219,7 @@ std::vector<DataPoint> processAccSpike(const std::vector<DataPoint>& window) {
         }
     }
 
-    // Filtraggio e decimazione per ogni canale
+    // Filtering and decimation for each channel
     for (size_t j = 0; j < num_channels; j++) {
         applyZeroPhaseButterworth(channels[j], true, As_HIGH_CUT_F, A_TARGET_FS);
         channels[j] = downsample(channels[j], A_DECIMATION_FACTOR);
@@ -231,10 +231,10 @@ std::vector<DataPoint> processAccSpike(const std::vector<DataPoint>& window) {
 
     for (size_t i = 0; i < channels[0].size(); ++i) {
         acc_th[i] = 2 * stats.getStdDev() + stats.getMean() + sma[i];
-        acc_delta[i] = std::max(0.0, channels[0][i] - acc_th[i]); // Imposta a 0 se negativo
+        acc_delta[i] = std::max(0.0, channels[0][i] - acc_th[i]); // Set to 0 if negative
     }
 
-    // Creazione della finestra elaborata decimata
+    // Create the processed decimated window
     size_t new_size = channels[0].size();
     std::vector<DataPoint> processed_window(new_size, DataPoint(0, num_channels));
     for (size_t i = 0; i < new_size; i++) {
@@ -246,7 +246,7 @@ std::vector<DataPoint> processAccSpike(const std::vector<DataPoint>& window) {
     return processed_window;
 }
 
-// Callback per mostrare i risultati
+// Callback to display results
 void AccSpikesResult(const std::vector<DataPoint>& result, WindowProcessor& processor) {
     std::vector<DataPoint> AccSPikes(result.begin(), result.begin() + processor.step / A_DECIMATION_FACTOR);
     processor.addResults(AccSPikes);

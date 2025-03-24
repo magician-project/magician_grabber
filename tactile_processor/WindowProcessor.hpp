@@ -15,32 +15,32 @@
 #include <thread>
 #include <atomic>
 
-// Classe per rappresentare un punto dati con N canali
+// Class to represent a data point with N channels
 class DataPoint {
     public:
         double timestamp;
         std::vector<double> values;
 
-        // Costruttore di default
+        // Default constructor
         DataPoint() : timestamp(0.0), values() {}
 
-        // Costruttore con numero di canali specificato
+        // Constructor with a specified number of channels
         DataPoint(double t, size_t num_channels) : timestamp(t), values(num_channels, 0.0) {}
 
-        // Costruttore con valori inizializzati
+        // Constructor with initialized values
         DataPoint(double t, const std::vector<double>& v) : timestamp(t), values(v) {}
 
-        // Metodo per impostare i valori
+        // Method to set the values
         void setValues(const std::vector<double>& v) {
             values = v;
         }
 
-        // Metodo per ottenere il numero di canali
+        // Method to get the number of channels
         size_t numChannels() const {
             return values.size();
         }
 
-        // Metodo per stampare il contenuto del DataPoint
+        // Method to print the content of the DataPoint
         void print() const {
             std::cout << "Timestamp: " << timestamp << " | Values: ";
             for (double v : values) std::cout << v << " ";
@@ -48,7 +48,7 @@ class DataPoint {
         }
 };
 
-// Classe per gestire segnali con un numero variabile di canali
+// Class to manage signals with a variable number of channels
 class WindowProcessor {
 private:
     size_t window_size, overlap, downsampled_size, num_channels;
@@ -71,9 +71,9 @@ private:
     std::thread worker_thread_;
     std::atomic<bool> running_{false}, processing_{false};
 
-    // Avvia il worker thread con una funzione di elaborazione
+    // Start the worker thread with a processing function
     void start_processor() {
-        if (running_) return;  // Evita di avviare più worker
+        if (running_) return;  // Avoid starting multiple workers
         running_ = true;
         processing_ = true;
         worker_thread_ = std::thread([this]() {
@@ -84,11 +84,11 @@ private:
                 if(buffer.size() >= window_size){
                     std::vector<DataPoint> window(buffer.begin(), buffer.begin() + window_size);
 
-                    // Processa la finestra
+                    // Process the window
                     if (processing_function) {
                         std::vector<DataPoint> processed_window = processing_function(window);
 
-                        // Overlap-Add con normalizzazione
+                        // Overlap-Add with normalization
                         for (size_t i = 0; i < downsampled_size; i++) {
                             for (size_t j = 0; j < num_channels; j++) {
                                 overlap_buffer[i].values[j] += processed_window[i].values[j];
@@ -96,7 +96,7 @@ private:
                             normalization_buffer[i] += 1.0;
                         }
 
-                        // Normalizzazione e output
+                        // Normalization and output
                         std::vector<DataPoint> normalized_output(downsampled_size);
                         for (size_t i = 0; i < downsampled_size; i++) {
                             normalized_output[i].timestamp = window[i * DECIMATION_FACTOR].timestamp;
@@ -116,7 +116,7 @@ private:
                             result_callback(normalized_output, *this);
                         }
 
-                        // Shift del buffer per la prossima finestra
+                        // Shift the buffer for the next window
                         buffer.erase(buffer.begin(), buffer.begin() + step);
                         for (size_t i = 0; i < downsampled_size - step / DECIMATION_FACTOR; i++) {
                             overlap_buffer[i] = overlap_buffer[i + step / DECIMATION_FACTOR];
@@ -135,11 +135,11 @@ private:
         });
     }
 
-    // Ferma il worker thread in sicurezza
+    // Safely stop the worker thread
     void stop_processor() {
         if (running_) {
             running_ = false;
-            buff_cond_.notify_all();  // Sblocca eventuali thread in attesa
+            buff_cond_.notify_all();  // Unlock any waiting threads
             std::unique_lock<std::mutex> lock(buff_mutex_);
             processing_cond_.wait(lock, [this] { return buffer.size()<window_size && !processing_; });
             lock.unlock();
@@ -163,7 +163,7 @@ public:
             if (write_to_file) {
                 output_file.open(filename);
                 if (!output_file.is_open()) {
-                    throw std::runtime_error("Errore nell'apertura del file di output.");
+                    throw std::runtime_error("Error opening the output file.");
                 }
             }
           }
