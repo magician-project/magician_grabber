@@ -8,6 +8,7 @@ extern "C"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <time.h>
 
@@ -33,11 +34,52 @@ extern "C"
 #define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
 #define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
 
+
+#include "performance.h"
+
+
+static char arduinoUseRoundLight[]    = {"r\n"};
+static char arduinoUseDistanceLight[] = {"a\n"};
+
 typedef struct
 {
     char outputDirectory[1024];
     char outputDirectoryOriginal[1024];
     unsigned long maxTimeToGrabForInSeconds;
+
+
+
+    // Global flag for termination
+    char keep_running       ;
+    char run_forever       ;
+    unsigned char countdown ;
+
+    // Modules available to use
+    char interceptKeyboard ;
+    char useRAM       ;
+    char useArduino   ;
+    char useTeensy    ;
+    char useCamera    ;
+    char useATIForce  ;
+    char streamCamera ;
+
+    char * arduinoExtraCommand;
+
+    #if TACTILE
+    char calculateTactileFeatures    ;
+    #endif // TACTILE
+
+
+    // Camera Default settings
+    unsigned int width      ;
+    unsigned int height     ;
+    unsigned int exposure   ; // 0 means no setting
+    double       gain       ;
+    double       blackLevel;
+    double       frameRate ; //Each image is 4.5MB,
+    //this framerate writes 45MB/sec to disk which is a sane value
+    //use --ram to store data on a tmpfs/ for higher speeds
+    //use --rt to elevate priority for higher speeds
 
 } GlobalConfig;
 
@@ -155,6 +197,47 @@ static void progress_bar(unsigned long runningTimeInSeconds,unsigned long maxTim
   printf("] ");
 }
 
+
+
+static int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
+{
+    if (cfg==0) { return 0; }
+    snprintf(cfg->outputDirectory,512,"%s",outputDirectory);
+
+    char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
+    if (!enabledFileOutput)
+    {
+        //If there is no file output we are done now..
+        return 1;
+    }
+
+
+    if (strcmp(outputDirectory,"./")!=0)
+    {
+     char makedircmd[2048]={0};
+     snprintf(makedircmd,1024,"mkdir -p %.512s",cfg->outputDirectory);
+     int z = system(makedircmd);
+     if (z==0) { fprintf(stderr,"Output Path set to \"%s\" \n",cfg->outputDirectory); } else
+                { fprintf(stderr,RED "Failed setting output Path to \"%s\" \n" NORMAL,cfg->outputDirectory); }
+
+     snprintf(makedircmd,1024,"mkdir -p %.512s/tactile",cfg->outputDirectory);
+     z = system(makedircmd);
+     if (z==0) { fprintf(stderr,"Also created a tactile subdirectory \n"); } else
+                { fprintf(stderr,RED "Failed creating tactile subdir \n" NORMAL); }
+
+    }
+    return 1;
+}
+
+
+static int noOutputDirectory(GlobalConfig *cfg)
+{
+  if (cfg==0) { return 0; }
+
+  setOutputDirectory(cfg,"/dev/null");
+  return 1;
+}
+
 static void print_help()
 {
     printf("Usage: magician_grabber [OPTIONS]\n\n");
@@ -182,6 +265,170 @@ static void print_help()
     printf("  --stream                  Stream camera data to shared memory (disables file output).\n");
     printf("  --scan                    Scan using Arduino and exit.\n");
     printf("  --help                    Show this help message and exit.\n");
+}
+
+
+static void printHz(float Hz)
+{
+    if (Hz>1000)
+    { printf("%0.2f Khz", (float) Hz /1000); } else
+    { printf("%0.2f Hz", Hz );  }
+}
+
+
+static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
+{
+    //Parse command line arguments
+    for (int i=0; i<argc; i++)
+    {
+        if (strcmp(argv[i], "--help") == 0)
+        {
+         print_help();
+         exit(0);
+        } else
+        if ( (strcmp(argv[i],"-o")==0) || (strcmp(argv[i],"--output")==0) )
+        {
+            if (argc>i+1)
+            { setOutputDirectory(cfg,argv[i+1]); }
+            else
+            { fprintf(stderr,"Failed setting output Path, not enough arguments! \n"); }
+        }
+        else if (strcmp(argv[i],"--nooutput")==0)
+        {
+            noOutputDirectory(cfg);
+            fprintf(stderr,"File output disabled\n");
+        }
+        else if (strcmp(argv[i],"--countdown")==0)
+        {
+            cfg->countdown = (unsigned char) atoi(argv[i+1]);
+            fprintf(stderr,"Will perform countdown before starting\n");
+        }
+        else if (strcmp(argv[i],"--nokb")==0)
+        {
+            cfg->interceptKeyboard = 0;
+            fprintf(stderr,"Will not intercept keyboard presses\n");
+        }
+        else if (strcmp(argv[i],"--kb")==0)
+        {
+            cfg->interceptKeyboard = 1;
+            fprintf(stderr,"Will intercept keyboard presses\n");
+        }
+        else if (strcmp(argv[i],"--ram")==0)
+        {
+            cfg->useRAM = 1;
+            fprintf(stderr,"Will use RAM to store data\n");
+        }
+        else if (strcmp(argv[i],"--size")==0)
+        {
+            cfg->width  = atoi(argv[i+1]);
+            cfg->height = atoi(argv[i+2]);
+            fprintf(stderr,"Camera size set to %u x %u pixels \n",cfg->width,cfg->height);
+        }
+        else if (strcmp(argv[i],"--exposure")==0)
+        {
+            cfg->exposure=atoi(argv[i+1]);
+            fprintf(stderr,"Exposure will be set to %u μsec \n",cfg->exposure);
+        }
+        else if (strcmp(argv[i],"--gain")==0)
+        {
+            cfg->gain=atof(argv[i+1]);
+            fprintf(stderr,"Gain will be set to %f \n",cfg->gain);
+        }
+        else if (strcmp(argv[i],"--fps")==0)
+        {
+            cfg->frameRate=atof(argv[i+1]);
+            fprintf(stderr,"Framerate will be set to %f Hz \n",cfg->frameRate);
+            if (cfg->frameRate>10)
+            {
+              fprintf(stderr,"Consider using --ram to write to a tmpfs to support this framerate without frame drops!\n");
+            }
+        }
+        else if (strcmp(argv[i],"--blacklevel")==0)
+        {
+            cfg->blackLevel=atof(argv[i+1]);
+            fprintf(stderr,"Black Level will be set to %f μsec \n",cfg->blackLevel);
+        }
+        else if (strcmp(argv[i],"--time")==0)
+        {
+            cfg->run_forever=0;
+            cfg->maxTimeToGrabForInSeconds=atoi(argv[i+1]);
+            fprintf(stderr,"Setting frame grab to %lu \n",cfg->maxTimeToGrabForInSeconds);
+        }
+        else if (strcmp(argv[i],"--forever")==0)
+        {
+            cfg->run_forever=1;
+            fprintf(stderr,"Running forever..\n");
+        }
+        else if (strcmp(argv[i],"--camera")==0)
+        {
+            cfg->useCamera = 1;
+            fprintf(stderr,"Activating Camera\n");
+        }
+        else if (strcmp(argv[i],"--force")==0)
+        {
+            cfg->useATIForce = 1;
+            fprintf(stderr,"Activating Force\n");
+        }
+        else if (strcmp(argv[i],"--features")==0)
+        {
+            #if TACTILE
+              cfg->calculateTactileFeatures = 1;
+              fprintf(stderr,"Activating Force\n");
+            #else
+              fprintf(stderr,"This build of magician grabber has no tactile features, try magician_grabber_tactile\n");
+              exit(1);
+            #endif // TACTILE
+        }
+        else if (strcmp(argv[i],"--accelerometer")==0)
+        {
+            cfg->useTeensy = 1;
+            fprintf(stderr,"Activating Force\n");
+        }
+        else if (strcmp(argv[i],"--distance")==0)
+        {
+            cfg->useArduino = 1;
+            fprintf(stderr,"Activating Arduino\n");
+        }
+        else if (strcmp(argv[i],"--dlight")==0)
+        {
+            cfg->arduinoExtraCommand = arduinoUseDistanceLight;
+            fprintf(stderr,"Using Lighting based on distance\n");
+        }
+        else if (strcmp(argv[i],"--rlight")==0)
+        {
+            cfg->arduinoExtraCommand = arduinoUseRoundLight;
+            fprintf(stderr,"Using Lighting based on round robin\n");
+        }
+        else if (strcmp(argv[i],"--rt")==0)
+        {
+            fprintf(stderr,"Trying to set real-time priority\n");
+
+            if (elevate_nice_priority(-20))
+            //if (set_process_nice(-10))
+            //if ( set_realtime_thread_priority() )
+                           { drop_privileges(0); } //drop_privileges("nobody");
+        }
+        else if (strcmp(argv[i],"--all")==0)
+        {
+            cfg->useArduino  = 1;
+            cfg->useTeensy   = 1;
+            cfg->useATIForce = 1;
+            cfg->useCamera   = 1;
+            //cfg->calculateTactileFeatures = 1;
+            fprintf(stderr,"Activating All Devices\n");
+        }
+        else if (strcmp(argv[i],"--stream")==0)
+        {
+            cfg->streamCamera = 1;
+            cfg->useCamera    = 1;
+            cfg->useArduino   = 1;
+            cfg->run_forever  = 1;
+            fprintf(stderr,"Streaming camera data to shared memory\n");
+            noOutputDirectory(cfg);
+            fprintf(stderr,"File output disabled, use --output with a later command to re-enable\n");
+        }
+}
+return 1;
 }
 
 #ifdef __cplusplus

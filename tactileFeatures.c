@@ -41,20 +41,86 @@ void *tactile_thread(void *arg)
    struct TactileDataState  *config = (struct TactileDataState  *) arg;
    GlobalConfig *cfg = config->global;
 
+   char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
 
    unsigned long lastUpdateTime = GetTickCountMicroseconds();
 
-   FILE * FrFD   = fopen( "FrFD.csv", "w");
-   FILE * AsFD   = fopen( "AsFD.csv", "w");
-   FILE * ApsdFD = fopen( "ApsdFD.csv", "w");
-   FILE * FpsdFD = fopen( "FpsdFD.csv", "w");
+
+
+
+   FILE * FrFD   = 0;
+   FILE * AsFD   = 0;
+   FILE * ApsdFD = 0;
+   FILE * FpsdFD = 0;
+
+
+   if (enabledFileOutput)
+       {
+        char fullCSVOutputPath[2048]={0};
+
+        //-----------------------------------------------------------------------------------
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/friction.csv",cfg->outputDirectory);
+        FrFD = fopen(fullCSVOutputPath, "w");
+        if (!FrFD)
+        {
+           fprintf(stderr,"Failed to open %s CSV file",fullCSVOutputPath);
+           exit(1); //Terminate
+        } else
+        {
+           fprintf(stderr,"Opened %s for output\n",fullCSVOutputPath);
+        }
+        //-----------------------------------------------------------------------------------
+
+
+        //-----------------------------------------------------------------------------------
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/acceleration_spikeness.csv",cfg->outputDirectory);
+        AsFD = fopen(fullCSVOutputPath, "w");
+        if (!AsFD)
+        {
+           fprintf(stderr,"Failed to open %s CSV file",fullCSVOutputPath);
+           exit(1); //Terminate
+        } else
+        {
+           fprintf(stderr,"Opened %s for output\n",fullCSVOutputPath);
+        }
+        //-----------------------------------------------------------------------------------
+
+
+        //-----------------------------------------------------------------------------------
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/acceleration_psd.csv",cfg->outputDirectory);
+        ApsdFD = fopen(fullCSVOutputPath, "w");
+        if (!ApsdFD)
+        {
+           fprintf(stderr,"Failed to open %s CSV file",fullCSVOutputPath);
+           exit(1); //Terminate
+        } else
+        {
+           fprintf(stderr,"Opened %s for output\n",fullCSVOutputPath);
+        }
+        //-----------------------------------------------------------------------------------
+
+
+        //-----------------------------------------------------------------------------------
+        snprintf(fullCSVOutputPath,2048,"%s/tactile/force_psd.csv",cfg->outputDirectory);
+        FpsdFD = fopen(fullCSVOutputPath, "w");
+        if (!FpsdFD)
+        {
+           fprintf(stderr,"Failed to open %s CSV file",fullCSVOutputPath);
+           exit(1); //Terminate
+        } else
+        {
+           fprintf(stderr,"Opened %s for output\n",fullCSVOutputPath);
+        }
+        //-----------------------------------------------------------------------------------
+
+       }
+
 
 
    if ( (FrFD != 0) && (AsFD != 0) && (ApsdFD != 0) && (FpsdFD != 0) )
    {
-
-   while (*config->keep_running)
-   {
+    while (*config->keep_running)
+    {
      unsigned long now = GetTickCountMicroseconds();
 
 
@@ -70,10 +136,13 @@ void *tactile_thread(void *arg)
      usleep(1000);
    }
 
-       fclose(FrFD);
-       fclose(AsFD);
-       fclose(ApsdFD);
-       fclose(FpsdFD);
+
+   fprintf(stderr,"Closing tactile files \n");
+
+   fclose(FrFD);
+   fclose(AsFD);
+   fclose(ApsdFD);
+   fclose(FpsdFD);
 
    }
    #endif // TACTILE

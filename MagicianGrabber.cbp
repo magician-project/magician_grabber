@@ -42,9 +42,6 @@
 			<Add option="-lm" />
 			<Add option="`pkg-config --libs aravis-0.10 `" />
 			<Add option="-lpthread" />
-			<Add option="-lfftw3" />
-			<Add option="tactile_processor/iir1/build/libiir_static.a" />
-			<Add option="tactile_processor/libTactileProcessor.a" />
 		</Linker>
 		<Unit filename="arduinoSensor.c">
 			<Option compilerVar="CC" />

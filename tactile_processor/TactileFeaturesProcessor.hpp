@@ -14,6 +14,8 @@
 #include "iir/Butterworth.h"
 #include "WindowProcessor.hpp"
 
+static const char TactileFeatureProcessorVersion[]="0.1";
+
 /*
 #ifdef __cplusplus
 extern "C"
