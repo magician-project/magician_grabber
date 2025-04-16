@@ -34,7 +34,7 @@ then
 echo "ARAVIS seems to already exist.."
 else
   echo "Cloning ARAVIS"
-  sudo apt install meson ninja gettext
+  sudo apt install meson ninja-build gettext
   git clone https://github.com/AravisProject/aravis
   cd aravis && meson build && cd build && ninja && sudo ninja install
 fi
