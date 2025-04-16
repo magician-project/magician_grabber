@@ -204,7 +204,7 @@ static void progress_bar(unsigned long runningTimeInSeconds,unsigned long maxTim
   printf("] ");
 }
 
-static countdownBeforeStart(unsigned int countdown)
+static void countdownBeforeStart(unsigned int countdown)
 {
    fprintf(stderr,"Performing initial countdown : ");
 
