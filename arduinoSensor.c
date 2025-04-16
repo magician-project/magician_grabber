@@ -407,7 +407,7 @@ void *arduino_thread(void *arg)
      if (strstr(config->csv_name,"accelerometer")!=0)
         {
          if (enabledFileOutput)
-            { fprintf(config->csv_file,"timestamp,dev_timestamp,accX,accY,accY\n"); }
+            { fprintf(config->csv_file,"timestamp,dev_timestamp,accX,accY,accZ\n"); }
          isAccelerometerData = 1;
         }
      if (strstr(config->csv_name,"controller")!=0)
