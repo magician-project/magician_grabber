@@ -35,6 +35,7 @@ echo "ARAVIS seems to already exist.."
 else
   echo "Cloning ARAVIS"
   sudo apt install meson ninja-build gettext
+  sudo apt install libxml2-dev libglib2.0-dev cmake libusb-1.0-0-dev gobject-introspection libgtk-3-dev gtk-doc-tools  xsltproc libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev libgirepository1.0-dev 
   git clone https://github.com/AravisProject/aravis
   cd aravis && meson build && cd build && ninja && sudo ninja install
 fi
