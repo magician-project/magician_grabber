@@ -333,6 +333,19 @@ int gigecamera_stopStream(GiGECameraConfig * context)
 }
 
 
+int camera_callback_relay(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
+{
+    if (config->callback)
+    {
+        // Cast back to the correct function pointer type before calling
+        int (*callback_func)(GiGECameraConfig *,unsigned long, struct Image *) =
+                (int (*)(GiGECameraConfig *,unsigned long, struct Image *)) config->callback;
+
+        return callback_func(config, timestamp, dataAsImage);  // Call the function
+    }
+    return 0;  // Indicate failure if no callback is set
+}
+
 
 void *gigecamera_thread(void *arg)
 {
@@ -392,7 +405,7 @@ void *gigecamera_thread(void *arg)
             shm_stream = (StreamingContext *) config->camera_shm_stream;
             if (shm_stream->frame == NULL)
             {
-              fprintf(stderr,"\nNo video buffer for streaming shm=%p\n",shm_stream);
+              fprintf(stderr,"\nNo video buffer for streaming shm=%p\n",(void*) shm_stream);
               exit(1);
             }
           }
@@ -434,6 +447,9 @@ void *gigecamera_thread(void *arg)
 
                             if (shm_stream!=NULL)
                                        { stream_image(shm_stream->frame,&dataAsImage); }
+
+                            if (config->callback!=0)
+                                       { camera_callback_relay(config, startGrab, &dataAsImage); }
 
                             if (enabledFileOutput)
                             {

@@ -34,7 +34,7 @@ extern "C"
 #define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
 #define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
 
-
+#include "colors.h"
 #include "performance.h"
 
 
@@ -47,12 +47,12 @@ typedef struct
     char outputDirectoryOriginal[1024];
     unsigned long maxTimeToGrabForInSeconds;
 
-
-
     // Global flag for termination
     char keep_running       ;
     char run_forever       ;
     unsigned char countdown ;
+
+    char manual_trigger_light;
 
     // Modules available to use
     char interceptKeyboard ;
@@ -64,6 +64,9 @@ typedef struct
     char streamCamera ;
 
     char * arduinoExtraCommand;
+
+    char arduinoPath[128];
+    char teensyPath[128];
 
     #if TACTILE
     char calculateTactileFeatures    ;
@@ -80,6 +83,9 @@ typedef struct
     //this framerate writes 45MB/sec to disk which is a sane value
     //use --ram to store data on a tmpfs/ for higher speeds
     //use --rt to elevate priority for higher speeds
+
+
+    void * arduino_cfg;
 
 } GlobalConfig;
 
@@ -156,19 +162,20 @@ static void clearScreen()
 }
 
 static void banner(const char * ver)
-{
- clearScreen();
+{clearScreen();
  printf(BLUE);
- printf("  __  __          _____ _____ _____ _____          _   _ \n");
- printf(" |  \\/  |   /\\   / ____|_   _/ ____|_   _|   /\\   | \\ | |\n");
- printf(" | \\  / |  /  \\ | |  __  | || |      | |    /  \\  |  \\| |\n");
- printf(" | |\\/| | / /\\ \\| | |_ | | || |      | |   / /\\ \\ | . ` |\n");
- printf(" | |  | |/ ____ \\ |__| |_| || |____ _| |_ / ____ \\| |\\  |\n");
- printf(" |_|  |_/_/    \\_\\_____|_____\\_____|_____/_/    \\_\\_| \\_|\n\n");
+ //printf(CYNB);
+ //ANSI SHADOW
+ printf("███╗   ███╗ █████╗  ██████╗ ██╗ ██████╗██╗ █████╗ ███╗   ██╗\n");
+ printf("████╗ ████║██╔══██╗██╔════╝ ██║██╔════╝██║██╔══██╗████╗  ██║\n");
+ printf("██╔████╔██║███████║██║  ███╗██║██║     ██║███████║██╔██╗ ██║\n");
+ printf("██║╚██╔╝██║██╔══██║██║   ██║██║██║     ██║██╔══██║██║╚██╗██║\n");
+ printf("██║ ╚═╝ ██║██║  ██║╚██████╔╝██║╚██████╗██║██║  ██║██║ ╚████║\n");
+ printf("╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝ ╚═════╝╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝\n");
+ //printf(BLKB);
  printf("                                Grabber v%s\n\n" NORMAL,ver);
  printf("\n");
 }
-
 
 static void broadcasting(unsigned long frameNumber)
 {
@@ -243,9 +250,13 @@ static void print_help()
     printf("Usage: magician_grabber [OPTIONS]\n\n");
     printf("Options:\n");
     printf("  -o, --output <path>       Set the output directory.\n");
+    printf("  --arduino <path>          Set the path to arduino (def. /dev/ttyACM0).\n");
+    printf("  --teensy <path>           Set the path to teensy (def. /dev/ttyACM1).\n");
     printf("  --nooutput                Disable file output (redirect to /dev/null).\n");
     printf("  --countdown <seconds>     Perform a countdown before starting.\n");
     printf("  --ram                     Use RAM to store data (recommended for high FPS).\n");
+    printf("  --trigger                 Manually trigger light change after each captured frame.\n");
+    printf("  --notrigger               Do not manually trigger light change after each captured frame.\n");
     printf("  --size <width> <height>   Set the camera resolution in pixels.\n");
     printf("  --exposure <microsec>     Set camera exposure time in microseconds.\n");
     printf("  --gain <value>            Set camera gain.\n");
@@ -286,6 +297,26 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
          print_help();
          exit(0);
         } else
+        if (strcmp(argv[i],"--arduino")==0)
+        {
+            if (argc>i+1)
+            {
+              cfg->useArduino = 1;
+              snprintf(cfg->arduinoPath,128,"%s",argv[i+1]);
+            }
+            else
+            { fprintf(stderr,"Failed setting arduino path, not enough arguments! \n"); }
+        } else
+        if (strcmp(argv[i],"--teensy")==0)
+        {
+            if (argc>i+1)
+            {
+              cfg->useTeensy = 1;
+              snprintf(cfg->teensyPath,128,"%s",argv[i+1]);
+            }
+            else
+            { fprintf(stderr,"Failed setting arduino path, not enough arguments! \n"); }
+        } else
         if ( (strcmp(argv[i],"-o")==0) || (strcmp(argv[i],"--output")==0) )
         {
             if (argc>i+1)
@@ -307,6 +338,16 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->interceptKeyboard = 0;
             fprintf(stderr,"Will not intercept keyboard presses\n");
+        }
+        else if (strcmp(argv[i],"--trigger")==0)
+        {
+            cfg->manual_trigger_light = 1;
+            fprintf(stderr,"Will manually trigger light changes!\n");
+        }
+        else if (strcmp(argv[i],"--notrigger")==0)
+        {
+            cfg->manual_trigger_light = 0;
+            fprintf(stderr,"Will NOT manually trigger light changes!\n");
         }
         else if (strcmp(argv[i],"--kb")==0)
         {

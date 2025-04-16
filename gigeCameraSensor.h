@@ -38,7 +38,7 @@ typedef struct
     void * error;
 
     void * camera_shm_stream;
-
+    void * callback;
 } GiGECameraConfig;
 
 

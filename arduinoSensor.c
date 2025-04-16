@@ -36,6 +36,19 @@ int serialport_init(const char* serialport, int baud)
     if (fd == -1)
     {
         fprintf(stderr,RED "serialport_init: Unable to open port\n" NORMAL);
+
+        fprintf(stderr,"Maybe consider :\n");
+        fprintf(stderr,"sudo usermod -a -G tty [username]");
+        fprintf(stderr,"sudo usermod -a -G dialout [username]");
+        fprintf(stderr,"\n OR \n");
+        fprintf(stderr,"sudo chmod 777 %s ",serialport);
+        fprintf(stderr,"to make sure the problem is not permissions related\n\n");
+        int i = system("ps -A | grep arduino && echo \"Arduino device maybe mounted by arduino-ide, Stop it before running me..!\"");
+        if (i!=0)
+        {
+         fprintf(stderr," Could not check for arduino-ide..\n");
+        }
+
         return -1;
     }
 
@@ -101,7 +114,7 @@ int serialport_init(const char* serialport, int baud)
     toptions.c_oflag &= ~OPOST; // make raw
     // see: http://unixwiz.net/techtips/termios-vmin-vtime.html
     toptions.c_cc[VMIN]  = 0; // Don't expect bytes, we handle this in our read function.
-    toptions.c_cc[VTIME] = 10; // tenth of a second: VTIME * 100ms.
+    toptions.c_cc[VTIME] = 0; // 10 tenth of a second: VTIME * 100ms.
 
     tcflush(fd, TCIFLUSH);
     if( tcsetattr(fd, TCSANOW, &toptions) < 0)
@@ -178,6 +191,21 @@ int arduino_startStream(ArduinoSerialConfig * context)
   //tcdrain(context->serial_fd);
 
   return 0;
+}
+
+int arduino_signalNewFrame(ArduinoSerialConfig * context)
+{
+  //fprintf(stderr,"Trigger light change to %s \n",context->port_name);
+  char buffer[]={"+\n"};
+  int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
+
+  if (n<=0)
+  {
+    fprintf(stderr,"Sending new frame command to %s failed (%d)\n",context->port_name,n);
+    return 0;
+  }
+
+  return 1;
 }
 
 
@@ -451,7 +479,7 @@ void *arduino_thread(void *arg)
         if (timeElapsedInSeconds!=0.0)
            { computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds; }
         config->Hz = (float) computeRate;
-        usleep(1000);
+        //usleep(1000);
       }
 
       fprintf(stderr,"Arduino Thread %s terminating\n",config->csv_name);

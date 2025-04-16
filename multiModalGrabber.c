@@ -29,13 +29,15 @@
 #include "gigeCameraSensor.h"
 #include "resolveUSBDevice.h"
 #include "tactileFeatures.h"
-#include "callbacks.h"
 
 //Shared memory for streaming
 #include "imageStreamer.h"
 #include "sharedMemoryVideoBuffers.h"
 
 #include "performance.h"
+
+//Callback defaults
+#include "callbacks.h"
 
 static const char MagicianGrabberVersion[]="0.92";
 
@@ -74,6 +76,25 @@ int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 }
 
 
+//These is a callback that triggers the next light
+static int camera_callback_next_light(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
+{
+    if (config!=NULL)
+    {
+      if (config->global!=NULL)
+      {
+        ArduinoSerialConfig * arduino = (ArduinoSerialConfig *) config->global->arduino_cfg;
+        if (arduino!=0)
+         {
+          return arduino_signalNewFrame(arduino);
+         }
+      }
+    }
+    return 0;
+}
+
+
+
 int main (int argc, char **argv)
 {
     // Show Welcome Message
@@ -90,6 +111,9 @@ int main (int argc, char **argv)
     setOutputDirectory(&cfg, "./");
     cfg.maxTimeToGrabForInSeconds = 30; //Grab for 30 seconds by default
 
+    //Set defaults for arduino/teensy
+    snprintf(cfg.arduinoPath,128,"%s","/dev/ttyUSB0");
+    snprintf(cfg.teensyPath,128,"%s","/dev/ttyACM0");
 
     // Global flag for termination
     cfg.keep_running = 1;
@@ -168,10 +192,23 @@ int main (int argc, char **argv)
 
     // Initialize Configurations
     //To debug aravis connection use : arv-camera-test-0.10  -d stream
-    GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL };
     ATINetFTConfig atinetft_config     = {&cfg, "192.168.200.11",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
-    ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM1",    "tactile/accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0, NULL};
-    ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyACM0",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, cfg.arduinoExtraCommand, 0, 0, 0.0, NULL};
+    ArduinoSerialConfig teensy_config  = {&cfg, "copy from cfg later",    "tactile/accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0, NULL};
+    ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, cfg.arduinoExtraCommand, 0, 0, 0.0, NULL};
+    GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };
+
+    //Make arduino_cfg visible!
+    cfg.arduino_cfg = (void*) &arduino_config;
+
+    //Make each camera frame trigger next light!
+    if (cfg.manual_trigger_light)
+    {
+     camera_config.callback = (void*) camera_callback_next_light;
+    }
+
+    //Copy teensy/arduino port
+    snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
+    snprintf(arduino_config.port_name,128,"%s",cfg.arduinoPath);
 
     //Try to make arduino wake up correctly
     //system("stty -F /dev/ttyACM0 115200 raw -echo");
@@ -330,8 +367,8 @@ int main (int argc, char **argv)
          { restore_terminal_mode(); }
 
     // Wait for threads to finish
-    if (cfg.useTeensy)   { fprintf(stderr,"Releasing Teensy\n");  pthread_join(teensy_tid, NULL);     }
     if (cfg.useArduino)  { fprintf(stderr,"Releasing Arduino\n"); pthread_join(arduino_tid, NULL);    }
+    if (cfg.useTeensy)   { fprintf(stderr,"Releasing Teensy\n");  pthread_join(teensy_tid, NULL);     }
     if (cfg.useATIForce) { fprintf(stderr,"Releasing ATI\n");     pthread_join(atinetft_tid, NULL);   }
 
     printf("\n\n");

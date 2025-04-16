@@ -31,6 +31,8 @@ typedef struct
 
 
 
+int arduino_signalNewFrame(ArduinoSerialConfig * context);
+
 void *arduino_thread(void *arg);
 
 

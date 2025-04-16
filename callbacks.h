@@ -9,7 +9,7 @@ extern "C"
 
 
 //These are examples of callbacks
-static int camera_callback(GiGECameraConfig *camera_config)
+static int camera_callback(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
 {
     return 0;
 }

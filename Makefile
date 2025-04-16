@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wl,--copy-dt-needed-entries -O2 -fPIC -fPIE -Wall -Wno-unused-function `pkg-config --cflags aravis-0.10`
+CFLAGS = -Wl,--copy-dt-needed-entries -O2 -fPIC -fPIE -Wall -Wno-unused-function `pkg-config --cflags aravis-0.10` -lrt
 LDFLAGS = `pkg-config --libs aravis-0.10` -lpthread -lm
 TARGET = magician_grabber
 
@@ -14,10 +14,10 @@ SRC = multiModalGrabber.c arduinoSensor.c atiForceSensor.c gigeCameraSensor.c sh
 all: $(TARGET) $(TARGET_TACTILE)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
+	$(CC) -o $(TARGET) $(SRC) $(CFLAGS) $(LDFLAGS)
 
 $(TARGET_TACTILE): $(SRC)
-	$(CPP) $(CPPFLAGS) -o $(TARGET_TACTILE) $(SRC) $(LDFLAGS) $(TACTILE_RELEASE)
+	$(CPP) -o $(TARGET_TACTILE) $(SRC) $(CPPFLAGS) $(LDFLAGS) $(TACTILE_RELEASE)
 
 clean:
 	rm -f $(TARGET) $(TARGET_TACTILE)

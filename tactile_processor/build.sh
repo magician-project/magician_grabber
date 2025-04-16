@@ -30,9 +30,9 @@ if [ -f iir1/CMakeLists.txt ]
 then
 echo "IIR1 seems to already exist.."
 else
-  echo "         Do you want to download IIR1 ? "
+  echo "Cloning IIR1"
   echo
-  echo -n " (Y/N)?"
+  #echo -n " (Y/N)?"
   #read answer
   answer="Y"
   if test "$answer" != "N" -a "$answer" != "n";
