@@ -223,7 +223,7 @@ static void countdownBeforeStart(unsigned int countdown)
          }
 
          usleep(1000000); //1 sec
-         fprintf(stderr,".",remaining);
+         fprintf(stderr,".");
        }
    fprintf(stderr,"\n");
 

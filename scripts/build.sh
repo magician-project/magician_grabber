@@ -6,6 +6,9 @@ cd ..
 #This needs to be removed
 sudo apt remove brltty
 
+#For audible countdown
+sudo apt install festival
+
 GROUP="tty"
 if id -nG "$USER" | grep -qw "$GROUP"; then
     echo $USER belongs to $GROUP
