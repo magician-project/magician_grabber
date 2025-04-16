@@ -167,6 +167,12 @@ int main (int argc, char **argv)
      exit(0);
    }
 
+   if (strcmp("./",cfg.outputDirectory)==0)
+   {
+     fprintf(stderr,"No Output Directory given will auto generate one! \n");
+     setOutputDirectoryFromTimestamp(&cfg);
+   }
+
    if (cfg.useRAM)
    {
        snprintf(cfg.outputDirectoryOriginal,1024,"%s",cfg.outputDirectory);
@@ -177,7 +183,6 @@ int main (int argc, char **argv)
        if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs mount.. :(\n" NORMAL); return 1; }
        snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
    }
-
 
    if (cfg.countdown!=0)
    {

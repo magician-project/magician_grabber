@@ -237,6 +237,24 @@ static int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
 }
 
 
+static int setOutputDirectoryFromTimestamp(GlobalConfig *cfg)
+{
+    time_t rawtime;
+    struct tm * timeinfo;
+    char buffer[32]={0}; // Enough space for "YYYY_MM_DD_HH_MM_SS\0"
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+
+    strftime(buffer, 20, "%Y-%m-%d-%H-%M-%S", timeinfo);
+
+    char outDir[512]={0};
+    snprintf(outDir,512,"./%s-dur%u",buffer,cfg->maxTimeToGrabForInSeconds);
+
+    return setOutputDirectory(cfg,outDir);
+}
+
+
 static int noOutputDirectory(GlobalConfig *cfg)
 {
   if (cfg==0) { return 0; }
