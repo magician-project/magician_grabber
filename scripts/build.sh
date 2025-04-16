@@ -3,6 +3,8 @@ THISDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$THISDIR"
 cd ..
 
+#This needs to be removed
+sudo apt remove brltty
 
 GROUP="tty"
 if id -nG "$USER" | grep -qw "$GROUP"; then
