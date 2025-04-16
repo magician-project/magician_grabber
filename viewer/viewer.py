@@ -39,7 +39,7 @@ def runSingleFrame(image, startC=0, endC=3):
 
 def main(streamName):
     from SharedMemoryManager import SharedMemoryManager
-    smm = SharedMemoryManager("libSharedMemoryVideoBuffers.so", 
+    smm = SharedMemoryManager("./libSharedMemoryVideoBuffers.so", 
                               descriptor = "video_frames.shm", 
                               frameName  = streamName,
                               connect    = True)
