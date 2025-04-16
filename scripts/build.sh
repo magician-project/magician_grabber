@@ -21,6 +21,18 @@ else
 fi
 
 
+#Add export LD_LIBARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/x86_64-linux-gnu if not present
+TARGET_DIR="/usr/local/lib/x86_64-linux-gnu"
+EXPORT_LINE="export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$TARGET_DIR"
+
+# Check if the export line is already in .bashrc
+if grep -Fxq "$EXPORT_LINE" ~/.bashrc; then
+    echo "LD_LIBRARY_PATH already includes $TARGET_DIR in .bashrc"
+else
+    echo "$EXPORT_LINE" >> ~/.bashrc
+    echo "Added $TARGET_DIR to LD_LIBRARY_PATH in .bashrc"
+fi
+
 
 #Build tactile_processor libraries
 cd tactile_processor
@@ -40,6 +52,12 @@ else
   cd aravis && meson build && cd build && ninja && sudo ninja install
 fi
 
+
+
+
+
+cd "$THISDIR"
+cd ..
 make
 
 exit 0
