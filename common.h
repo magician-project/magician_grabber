@@ -206,15 +206,19 @@ static void progress_bar(unsigned long runningTimeInSeconds,unsigned long maxTim
 
 static void countdownBeforeStart(unsigned int countdown)
 {
-   fprintf(stderr,"Performing initial countdown : ");
+   fprintf(stderr,"Performing initial countdown (%u seconds) : ",countdown);
 
-   char whatToSay[100];
-   int i = 0;
-   for (int i=0; i<countdown; i++)
+   char whatToSay[100]={0};
+   unsigned int i = 0;
+   for (i=0; i<countdown; i++)
        {
-         snprintf(whatToSay,100,"echo \"%u\" | festival --tts&",countdown-i);
-         i=system(whatToSay);
-         if (i!=0) {  fprintf(stderr,"Failed executing : %s\n",whatToSay);}
+         unsigned int remaining = (unsigned int) countdown-i;
+         if (remaining<=5)
+         {
+          snprintf(whatToSay,100,"echo \"%u\" | festival --tts&",remaining);
+          i=system(whatToSay);
+          if (i!=0) {  fprintf(stderr,"Failed executing : %s\n",whatToSay); }
+         }
 
          usleep(1000000); //1 sec
          fprintf(stderr,".");
