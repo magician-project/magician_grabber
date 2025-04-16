@@ -215,7 +215,7 @@ static void countdownBeforeStart(unsigned int countdown)
        {
          unsigned int remaining = (unsigned int) countdown-c;
 
-         if (remaining<=5)
+         if (remaining<=3)
          {
           snprintf(whatToSay,100,"echo \"%u\" | festival --tts&",remaining);
           i=system(whatToSay);
