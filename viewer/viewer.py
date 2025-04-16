@@ -6,6 +6,15 @@ import time
 
 #from evaluate import generate_predictionStatistics, generate_colors, generate_heatmap, classify_tiles, load_classes_json, load_keras_model, checkIfPathIsDirectory, printLabels, castData
 
+def debayerPolarImage(image): 
+ # Split the A, B, C, and D values into separate monochrome images
+ polarization_90_deg   = image[0::2, 0::2]
+ polarization_45_deg   = image[0::2, 1::2]
+ polarization_135_deg  = image[1::2, 0::2]
+ polarization_0_deg    = image[1::2, 1::2]
+ return polarization_0_deg,polarization_45_deg,polarization_90_deg,polarization_135_deg      
+
+
 def convertPolarCVMATToRGBA(image):
     if image is None:
         print("Error: Unable to read the image.")
@@ -18,7 +27,6 @@ def convertPolarCVMATToRGBA(image):
     image = image[:,:,0]
 
     # Split into polarization images
-    from readData import debayerPolarImage
     polarization_0_deg, polarization_45_deg, polarization_90_deg, polarization_135_deg = debayerPolarImage(image)
 
     # Create an RGBA image
