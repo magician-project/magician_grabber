@@ -14,7 +14,7 @@
 #include <string.h>
 #include <errno.h>
 
-
+#include "common.h"
 #include <sys/ioctl.h>
 
 #include "arduinoSensor.h"
@@ -195,17 +195,24 @@ int arduino_startStream(ArduinoSerialConfig * context)
 
 int arduino_signalNewFrame(ArduinoSerialConfig * context)
 {
-  //fprintf(stderr,"Trigger light change to %s \n",context->port_name);
-  char buffer[]={"+\n"};
-  int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
-
-  if (n<=0)
+  if (context!=0)
   {
-    fprintf(stderr,"Sending new frame command to %s failed (%d)\n",context->port_name,n);
-    return 0;
-  }
+    if (context->global->useArduino)
+    {
+     //fprintf(stderr,"Trigger light change to %s \n",context->port_name);
+     char buffer[]={"+\n"};
+     int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
 
-  return 1;
+     if (n<=0)
+     {
+       fprintf(stderr,"Sending new frame command to %s failed (%d)\n",context->port_name,n);
+       return 0;
+     }
+
+     return 1;
+    }
+  }
+  return 0;
 }
 
 

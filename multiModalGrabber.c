@@ -39,7 +39,7 @@
 //Callback defaults
 #include "callbacks.h"
 
-static const char MagicianGrabberVersion[]="0.92";
+static const char MagicianGrabberVersion[]="0.94";
 
 volatile sig_atomic_t stop = 0;
 
@@ -119,6 +119,11 @@ int main (int argc, char **argv)
     cfg.keep_running = 1;
     cfg.run_forever  = 0;
     cfg.countdown    = 0;
+
+
+    //fprintf(stderr,"Will manually trigger light changes!\n");
+    //By default try to manually trigger light
+    cfg.manual_trigger_light = 1;
 
     // Modules available to use
     cfg.interceptKeyboard = 1;
