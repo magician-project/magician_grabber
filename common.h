@@ -204,6 +204,27 @@ static void progress_bar(unsigned long runningTimeInSeconds,unsigned long maxTim
   printf("] ");
 }
 
+static countdownBeforeStart(unsigned int countdown)
+{
+   fprintf(stderr,"Performing initial countdown : ");
+
+   char whatToSay[100];
+   int i = 0;
+   for (int i=0; i<countdown; i++)
+       {
+         snprintf(whatToSay,100,"echo \"%u\" | festival --tts&",countdown-i);
+         i=system(whatToSay);
+         if (i!=0) {  fprintf(stderr,"Failed executing : %s\n",whatToSay);}
+
+         usleep(1000000); //1 sec
+         fprintf(stderr,".");
+       }
+   fprintf(stderr,"\n");
+
+   snprintf(whatToSay,100,"echo \"Start\" | festival --tts&");
+   i=system(whatToSay);
+   if (i!=0) {  fprintf(stderr,"Failed executing : %s\n",whatToSay);}
+}
 
 
 static int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)

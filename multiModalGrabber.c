@@ -186,13 +186,7 @@ int main (int argc, char **argv)
 
    if (cfg.countdown!=0)
    {
-      fprintf(stderr,"Performing initial countdown : ");
-      for (int i=0; i<cfg.countdown; i++)
-       {
-         usleep(1000000); //1 sec
-         fprintf(stderr,".");
-       }
-      fprintf(stderr,"\n");
+      countdownBeforeStart(cfg.countdown);
    }
 
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)
