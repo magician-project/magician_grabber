@@ -5,7 +5,7 @@ cd "$THISDIR"
 
 #Simple dependency checker that will apt-get stuff if something is missing
 # sudo apt-get install build-essential cmake libopencv-dev libjpeg-dev libpng-dev freeglut3-dev libglew-dev libpthread-stubs0-dev
-SYSTEM_DEPENDENCIES="libfftw3-dev"
+SYSTEM_DEPENDENCIES="build-essential cmake libfftw3-dev"
 
 for REQUIRED_PKG in $SYSTEM_DEPENDENCIES
 do
