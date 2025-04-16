@@ -208,11 +208,13 @@ static void countdownBeforeStart(unsigned int countdown)
 {
    fprintf(stderr,"Performing initial countdown (%u seconds) : ",countdown);
 
-   char whatToSay[100]={0};
-   unsigned int i = 0;
-   for (i=0; i<countdown; i++)
+   char whatToSay[101]={0};
+
+   unsigned int i,c;
+   for (c=0; c<countdown; c++)
        {
-         unsigned int remaining = (unsigned int) countdown-i;
+         unsigned int remaining = (unsigned int) countdown-c;
+
          if (remaining<=5)
          {
           snprintf(whatToSay,100,"echo \"%u\" | festival --tts&",remaining);
@@ -221,7 +223,7 @@ static void countdownBeforeStart(unsigned int countdown)
          }
 
          usleep(1000000); //1 sec
-         fprintf(stderr,".");
+         fprintf(stderr,".",remaining);
        }
    fprintf(stderr,"\n");
 
