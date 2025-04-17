@@ -17,7 +17,7 @@ fi
 
 
 # Name of the process to watch
-process_name="magician_grabber"
+process_name="magician_grab"
 
 # Run your Python script in the background
 python3 viewer.py &
@@ -27,7 +27,8 @@ echo "Started python3 my_script.py with PID $python_pid"
 echo "Waiting for process '$process_name' to finish..."
 
 # Loop until the process is no longer running
-while pgrep -x "$process_name" >/dev/null; do
+#while pgrep -x "$process_name" >/dev/null; do
+while ps -A | grep -w "$process_name" | grep -v "grep" >/dev/null; do
     sleep 1
 done
 

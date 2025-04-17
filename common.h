@@ -454,6 +454,8 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         else if ( (strcmp(argv[i],"--view")==0) || (strcmp(argv[i],"--viewer")==0) )
         {
             cfg->viewer=1;
+            cfg->streamCamera = 1;
+            cfg->useCamera    = 1;
             fprintf(stderr,"Also running viewer..\n");
         }
         else if (strcmp(argv[i],"--camera")==0)
