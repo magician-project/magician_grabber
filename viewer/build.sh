@@ -40,6 +40,18 @@ fi
 
 
 
+if [ -d SharedMemoryVideoBuffers/Makefile ]
+then
+echo "Found SharedMemoryVideoBuffers" 
+else 
+git clone https://github.com/AmmarkoV/SharedMemoryVideoBuffers
+cd SharedMemoryVideoBuffers
+make
+cd ..
+ ln -s SharedMemoryVideoBuffers/libSharedMemoryVideoBuffers.so ./
+fi
+
+
 
 
 exit 0
