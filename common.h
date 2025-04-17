@@ -40,6 +40,8 @@ extern "C"
 
 static char arduinoUseRoundLight[]    = {"r\n"};
 static char arduinoUseDistanceLight[] = {"a\n"};
+static char arduinoUsePatternLight[]  = {"t\n"};
+
 
 typedef struct
 {
@@ -49,7 +51,8 @@ typedef struct
 
     // Global flag for termination
     char keep_running       ;
-    char run_forever       ;
+    char run_forever        ;
+    char viewer             ;
     unsigned char countdown ;
 
     char manual_trigger_light;
@@ -299,6 +302,7 @@ static void print_help()
     printf("  --teensy <path>           Set the path to teensy (def. /dev/ttyACM1).\n");
     printf("  --nooutput                Disable file output (redirect to /dev/null).\n");
     printf("  --countdown <seconds>     Perform a countdown before starting.\n");
+    printf("  --view                    Use Viewer.\n");
     printf("  --ram                     Use RAM to store data (recommended for high FPS).\n");
     printf("  --trigger                 Manually trigger light change after each captured frame.\n");
     printf("  --notrigger               Do not manually trigger light change after each captured frame.\n");
@@ -307,6 +311,7 @@ static void print_help()
     printf("  --gain <value>            Set camera gain.\n");
     printf("  --fps <Hz>                Set the camera frame rate (use --ram for FPS >10).\n");
     printf("  --blacklevel <value>      Set camera black level.\n");
+    printf("  --duration <seconds>      Set the maximum time for frame grabbing.\n");
     printf("  --time <seconds>          Set the maximum time for frame grabbing.\n");
     printf("  --forever                 Run indefinitely.\n");
     printf("  --camera                  Enable the camera.\n");
@@ -316,6 +321,7 @@ static void print_help()
     printf("  --distance                Enable distance sensor (Arduino device).\n");
     printf("  --dlight                  Use lighting based on distance sensor.\n");
     printf("  --rlight                  Use round-robin lighting.\n");
+    printf("  --tlight                  Use patterned lighting.\n");
     printf("  --rt                      Set real-time priority (requires privileges).\n");
     printf("  --all                     Enable all available devices.\n");
     printf("  --stream                  Stream camera data to shared memory (disables file output).\n");
@@ -434,7 +440,7 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
             cfg->blackLevel=atof(argv[i+1]);
             fprintf(stderr,"Black Level will be set to %f μsec \n",cfg->blackLevel);
         }
-        else if (strcmp(argv[i],"--time")==0)
+        else if  ( (strcmp(argv[i],"--time")==0) || (strcmp(argv[i],"--duration")==0) )
         {
             cfg->run_forever=0;
             cfg->maxTimeToGrabForInSeconds=atoi(argv[i+1]);
@@ -444,6 +450,11 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->run_forever=1;
             fprintf(stderr,"Running forever..\n");
+        }
+        else if ( (strcmp(argv[i],"--view")==0) || (strcmp(argv[i],"--viewer")==0) )
+        {
+            cfg->viewer=1;
+            fprintf(stderr,"Also running viewer..\n");
         }
         else if (strcmp(argv[i],"--camera")==0)
         {
@@ -484,6 +495,11 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->arduinoExtraCommand = arduinoUseRoundLight;
             fprintf(stderr,"Using Lighting based on round robin\n");
+        }
+        else if (strcmp(argv[i],"--tlight")==0)
+        {
+            cfg->arduinoExtraCommand = arduinoUsePatternLight;
+            fprintf(stderr,"Using Lighting based on patterned light\n");
         }
         else if (strcmp(argv[i],"--rt")==0)
         {

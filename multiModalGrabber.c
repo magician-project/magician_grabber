@@ -39,7 +39,7 @@
 //Callback defaults
 #include "callbacks.h"
 
-static const char MagicianGrabberVersion[]="0.94";
+static const char MagicianGrabberVersion[]="0.96";
 
 volatile sig_atomic_t stop = 0;
 
@@ -119,6 +119,7 @@ int main (int argc, char **argv)
     cfg.keep_running = 1;
     cfg.run_forever  = 0;
     cfg.countdown    = 0;
+    cfg.viewer       = 0;
 
 
     //fprintf(stderr,"Will manually trigger light changes!\n");
@@ -295,6 +296,13 @@ int main (int argc, char **argv)
                           }
 
     if (cfg.useATIForce) { pthread_create(&atinetft_tid,   NULL, atinetft_thread,   &atinetft_config); }
+
+
+    if (cfg.viewer)
+    {
+        int i=system("viewer/viewer.sh&");
+        if (i!=0) { fprintf(stderr,"Failed executing viewer!\n"); }
+    }
 
     //Enable keystrokes to be received without blocking execution
     int key = 0;
