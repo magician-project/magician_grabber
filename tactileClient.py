@@ -12,6 +12,26 @@ def main(streamName):
     while True:
         # Capture frame-by-frame
         frame = smm.read_from_shared_memory()
+        """
+         acceleration_psd.csv  2 values per measurement
+         acceleration_spikeness.csv 2 values per measurement
+         accelerometer.csv  4 values per measurement
+         force.csv 2 values per measurement
+         force_psd.csv  4 values per measurement
+         friction.csv 2 values per measurement
+
+         WINDOW = 4000
+        """
+        WINDOW = 4000
+
+        frameEnd = WINDOW*2
+        frameStart = 0
+        acceleration_psd = frame[frameStart:frameEnd] 
+
+        frameStart = frameEnd
+        frameEnd = frameStart + WINDOW*2
+        acceleration_spikeness = frame[frameStart: frameEnd] 
+
         print("Data :",frame)
      
 
