@@ -85,7 +85,7 @@ int writePNM(const char * filename,int width,int height,int channels, unsigned c
     //fprintf(stderr,"saveRawImageToFile(%s) called\n",filename);
     if (filename==0) { return 0; }
 
-    if(data==0) { fprintf(stderr,"saveRawImageToFile(%s) called for an unallocated (empty) frame , will not write any file output\n",filename); return 0; }
+    if(data==0) { debug_message("saveRawImageToFile(%s) called for an unallocated (empty) frame , will not write any file output\n",filename); return 0; }
 
     FILE *fd=0;
     fd = fopen(filename,"wb");
@@ -97,7 +97,7 @@ int writePNM(const char * filename,int width,int height,int channels, unsigned c
         else if (channels==1) fprintf(fd, "P5\n");
         else
         {
-            fprintf(stderr,"Invalid channels arg (%u) for SaveRawImageToFile\n",channels);
+            debug_message("Invalid channels arg (%u) for SaveRawImageToFile\n",channels);
             fclose(fd);
             return 1;
         }
@@ -115,7 +115,7 @@ int writePNM(const char * filename,int width,int height,int channels, unsigned c
     }
     else
     {
-        fprintf(stderr,"SaveRawImageToFile could not open output file %s\n",filename);
+        debug_message("SaveRawImageToFile could not open output file %s\n",filename);
         return 0;
     }
     return 0;
@@ -201,7 +201,7 @@ int unmapLocalMappingItem(struct VideoFrameLocalMapping * localmap,unsigned int 
      {
       if ( (localmap->data[item]!=0) && (localmap->sz[item]!=0) )
        {
-        fprintf(stderr,"Unmapping memory for item %u\n",item);
+        debug_message("Unmapping memory for item %u\n",item);
         munmap(localmap->data[item],localmap->sz[item]);
         localmap->sz[item]   = 0;
         localmap->data[item] = 0;
@@ -237,7 +237,7 @@ void copy_to_shared_memory(struct VideoFrame *frame, const void* src, size_t n)
         {
            if (frame->frame_size >= n)
            {
-             fprintf(stderr,"Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
+             debug_message("Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
              memcpy(frame->client_address_space_data_pointer,src, n);
            }
         }

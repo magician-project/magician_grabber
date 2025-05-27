@@ -13,20 +13,20 @@
 #define A_input_fs 4000
 #define A_dec_fact 1
 
-#define Fr_win_size 128 * F_dec_fact
+#define Fr_win_size 128
 #define Fr_ovlp 0.5
 #define Fr_highcutf 450.0
 #define Fr_lowcutf 10.0
 
-#define As_win_size 2000 * A_dec_fact
+#define As_win_size 2000
 #define As_ovlp 0.5
 #define As_highcutf 100.0
 
-#define Fpsd_win_size 5 * F_dec_fact
+#define Fpsd_win_size 128
 #define Fpsd_ovlp 0.8
 #define Fpsd_lowcutf 5.0
 
-#define Apsd_win_size 20 * A_dec_fact
+#define Apsd_win_size 128
 #define Apsd_ovlp 0.8
 #define Apsd_lowcutf 5.0
 
@@ -140,6 +140,69 @@ int tactile_write_disk(FILE* FrFD, FILE* AsFD, FILE* ApsdFD , FILE* FpsdFD)
 }
 
 
+int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int window_elements)
+{
+    float * memAsFloat = (float*) mem;
+
+    int elements = (int) window_elements;
+    if ( 
+         (elements<=processor.Fr_processor.size()) &&
+         (elements<=processor.As_processor.size()) &&
+         (elements<=processor.Apsd_processor.size()) &&
+         (elements<=processor.Fpsd_processor.size()) 
+       )
+      {
+        unsigned int memBase = 0;
+        fprintf(stderr,"\n\nEmitting Tactile Shared Memory \n\n");
+        //Friction
+        //===============================================================================
+        std::vector<DataPoint> resultsFr = processor.getFrictionResults(window_elements);
+        for (unsigned int i =0; i<resultsFr.size(); i++)
+         {
+           memAsFloat[memBase + i*2 + 0] = (float) resultsFr[i].timestamp;
+           memAsFloat[memBase + i*2 + 1] = (float) resultsFr[i].values[0];
+         }
+         memBase += resultsFr.size() * 2; 
+        //===============================================================================
+
+        //Acceleration spikes
+        //===============================================================================
+        std::vector<DataPoint> resultsAs = processor.getAccSpikeResults(window_elements);
+        for (unsigned int i =0; i<resultsAs.size(); i++)
+         {
+           memAsFloat[memBase + i*2 + 0] = (float) resultsAs[i].timestamp;
+           memAsFloat[memBase + i*2 + 1] = (float) resultsAs[i].values[0];
+         }
+         memBase += resultsAs.size() * 2; 
+        //===============================================================================
+
+        //Acceleration PSD
+        //===============================================================================
+        std::vector<DataPoint> resultsAccPSD = processor.getAccPSDResults(window_elements);
+        for (unsigned int i =0; i<resultsAccPSD.size(); i++)
+         {
+           memAsFloat[memBase + i*2 + 0] = (float) resultsAccPSD[i].timestamp;
+           memAsFloat[memBase + i*2 + 1] = (float) resultsAccPSD[i].values[0];
+         }
+         memBase += resultsAccPSD.size() * 2; 
+        //===============================================================================
+
+        //Force PSD
+        //=============================================================================== 
+        std::vector<DataPoint> resultsFPSD = processor.getForcePSDResults(window_elements);
+        for (unsigned int i =0; i<resultsFPSD.size(); i++)
+         {
+           memAsFloat[memBase + i*2 + 0] = (float) resultsFPSD[i].timestamp;
+           memAsFloat[memBase + i*2 + 1] = (float) resultsFPSD[i].values[0];
+         }
+         memBase += resultsFPSD.size() * 2; 
+        //=============================================================================== 
+ 
+        return 1;
+      } 
+      //else { fprintf(stderr,"\n\nNOT ENOUGH DATA FOR Emitting Tactile Shared Memory \n\n"); }
+    return 0;
+}
 
 
 #if TACTILE_LIBRARY
@@ -148,10 +211,10 @@ int tactile_main()
 int main (int argc, char **argv)
 #endif
 {
-    std::string F_input_file = "ForceRaw.txt";
+    std::string F_input_file = "input.txt";
     std::ifstream infile(F_input_file);
 
-    std::string A_input_file = "AccRaw.txt";
+    std::string A_input_file = "input1.txt";
     std::ifstream infile1(A_input_file);
 
     double timestampF, fx, fy, fz, flagF, timestampA, ax, ay, az, flagA;
@@ -184,7 +247,7 @@ int main (int argc, char **argv)
         processor.addAccelerationData({timestampA, {ax, ay, az}});
     }
 
-    /*while (processor.isProcessing())
+    while (processor.isProcessing())
     {
         //std::cout << "?";
         std::vector<DataPoint> results = processor.getFrictionResults(1);
@@ -197,7 +260,9 @@ int main (int argc, char **argv)
             }
             std::cout << std::endl;
         }
-    }*/
+    }
+
+    //std::cout << "Done";
 
     infile.close();
     infile1.close();

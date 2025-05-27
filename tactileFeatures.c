@@ -11,6 +11,7 @@
 
 #if TACTILE
 #include "tactile_processor/TactileFeaturesProcessor.hpp"
+#include "tactileStreamer.h"
 #endif // TACTILE
 
 
@@ -149,6 +150,7 @@ void *tactile_thread(void *arg)
    if (config->tactile_shm_stream!=0)
    {
    fprintf(stderr,"Tactile thread will stream\n");
+   StreamingTactileContext * streaming_tactile_context = (StreamingTactileContext *) config->tactile_shm_stream;
 
     while (*config->keep_running)
     {
@@ -158,7 +160,17 @@ void *tactile_thread(void *arg)
      if (now - lastUpdateTime > 10000)
      {
       // fprintf(stderr,"Tac ");
-      fflush(stderr);
+
+       if ( tactile_write_shared_memory((void*) streaming_tactile_context->data.data,TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW,TACTILE_STREAMING_WINDOW * sizeof(float)) )
+       {
+         streaming_tactile_context->data.timestamp = now;
+         streaming_tactile_context->data.data_size = TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW * sizeof(float);
+
+         //stream_image(shm_stream->frame,&dataAsImage);
+         stream_tactile(streaming_tactile_context->frame,&streaming_tactile_context->data);
+       }
+
+      //fflush(stderr);
      }
 
      usleep(1000);
