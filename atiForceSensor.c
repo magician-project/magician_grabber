@@ -94,11 +94,74 @@ int ati_call_callback(ATINetFTConfig *config, unsigned long timestamp, double fX
     return 0;  // Indicate failure if no callback is set
 }
 
+
+
+void *atinetft_simulated_thread(void *arg)
+{
+   ATINetFTConfig *config = (ATINetFTConfig *)arg;
+   //GlobalConfig *cfg = config->global;
+
+   double step = 0.0;
+   unsigned long atiStartTime = GetTickCountMicroseconds();
+   while (*config->keep_running)
+   {
+     config->running = 1;
+
+     unsigned long receptionTime = GetTickCountMicroseconds();
+	 double fX = (double) step;
+	 double fY = (double) step;
+	 double fZ = (double) step;
+	 double tX = (double) step;
+	 double tY = (double) step;
+     double tZ = (double) step;
+
+     step += 0.1;
+     config->receivedDataFrames+=1;
+
+     if (config->callback)
+                 {
+                    //Pass our CSV line to a callback function!
+                    ati_call_callback(config,receptionTime,fX, fY, fZ, tX, tY, tZ);
+                 }
+
+
+     if (step>1000.0) { step = 0; }
+     usleep(100);
+
+
+     //Calculate framerates
+     double timeElapsedInSeconds = (double) ((double) (receptionTime-atiStartTime)/(double) 1000000.0);
+     double computeRate = 0.0;
+     if (timeElapsedInSeconds!=0.0)
+           { computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds; }
+
+     config->Hz = (float) computeRate;
+   }
+
+   return NULL;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 void *atinetft_thread(void *arg)
 {
     ATINetFTConfig *config = (ATINetFTConfig *)arg;
     GlobalConfig *cfg = config->global;
 
+
+    if (cfg->simulate)
+    {
+        return atinetft_simulated_thread(arg);
+    }
 
     char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
 

@@ -31,6 +31,7 @@ gigeCameraSensor.c
 sharedMemoryVideoBuffers.c
 imageStreamer.c
 tactileFeatures.c
+tactileStreamer.c
 )
 
 set(TACTILE_SRC 
@@ -43,6 +44,20 @@ ament_target_dependencies(magician_grabber rclcpp std_msgs)
 #target_compile_definitions(magician_grabber PRIVATE TACTILE TACTILE_LIBRARY)
 target_include_directories(magician_grabber PRIVATE ${ARAVIS_INCLUDE_DIRS})
 target_link_libraries(magician_grabber ${ARAVIS_LIBRARIES} pthread m) #fftw3 
+
+
+# =====================
+# Shared library build
+# =====================
+#add_library(SharedMemoryVideoBuffers SHARED sharedMemoryVideoBuffers.c)
+#target_compile_options(SharedMemoryVideoBuffers PRIVATE -Wall -pthread -g)
+#target_link_libraries(SharedMemoryVideoBuffers PRIVATE pthread m rt) 
+
+set_target_properties(SharedMemoryVideoBuffers PROPERTIES
+  OUTPUT_NAME SharedMemoryVideoBuffers
+  POSITION_INDEPENDENT_CODE ON
+)
+
 
 install(TARGETS
   magician_grabber

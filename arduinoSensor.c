@@ -370,10 +370,63 @@ int process_generic_string_data(ArduinoSerialConfig *config, char enabledFileOut
 }
 
 
+
+void *arduino_simulated_thread(void *arg)
+{
+   ArduinoSerialConfig *config = (ArduinoSerialConfig *)arg;
+   //GlobalConfig *cfg = config->global;
+
+
+
+   double step = 0.0;
+   unsigned long arduinoStartTime = GetTickCountMicroseconds();
+   while (*config->keep_running)
+   {
+     config->running = 1;
+
+     unsigned long receptionTime = GetTickCountMicroseconds();
+	 double accelX_ms2 = (double) step;
+	 double accelY_ms2 = (double) step;
+	 double accelZ_ms2 = (double) step;
+
+     step += 0.1;
+     config->receivedDataFrames+=1;
+
+    if (config->callback)
+                   {
+                    //Pass our data to a callback function!
+                     if (arduino_call_accelerometer_callback(config,receptionTime,receptionTime,accelX_ms2,accelY_ms2,accelZ_ms2) == 0)
+                     {
+                         fprintf(stderr,"Arduino Callback failed to complete \n");
+                     }
+                   }
+
+     if (step>1000.0) { step = 0; }
+     usleep(250);
+
+
+     double timeElapsedInSeconds = (double) ((double) (receptionTime-arduinoStartTime)/(double) 1000000.0);
+     double computeRate = 0.0;
+     if (timeElapsedInSeconds!=0.0)
+           { computeRate = (double) config->receivedDataFrames/timeElapsedInSeconds; }
+     config->Hz = (float) computeRate;
+   }
+
+   return NULL;
+}
+
+
+
 void *arduino_thread(void *arg)
 {
     ArduinoSerialConfig *config = (ArduinoSerialConfig *)arg;
     GlobalConfig *cfg = config->global;
+
+    if (cfg->simulate)
+    {
+        return arduino_simulated_thread(arg);
+    }
+
 
     char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
 

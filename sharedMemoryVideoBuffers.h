@@ -24,6 +24,8 @@ extern "C"
 #define ATTEMPTS_TO_LOCK_A_BUFFER 1000
 #define SLEEP_TIME_BETWEEN_LOCK_ATTEMPTS_MICROSECONDS 10
 
+#define DEBUG_MESSAGES 0
+
 /** @brief Structure to hold video frame metadata.
  */
 struct VideoFrame
@@ -143,6 +145,18 @@ int create_frame_shared_memory(struct VideoFrame *frame);
  * @return 0 on success, -1 on failure.
  */
 int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * streamName,unsigned int width, unsigned int height, unsigned int channels);
+
+
+
+/**
+ * @brief Creates metadata for a generic data frame.
+ * @param context Pointer to the shared memory context.
+ * @param streamName Name of the stream.
+ * @param dataSize Size of data in bytes for the data frame.
+ * @return 0 on success, -1 on failure.
+ */
+int createGenericMetaData(struct SharedMemoryContext* context,const char * streamName,unsigned int dataSize);
+
 
 /**
  * @brief Destroys a video frame.

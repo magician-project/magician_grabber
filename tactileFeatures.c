@@ -38,14 +38,14 @@ int addTactileForceReading(ATINetFTConfig *config, unsigned long system_timestam
 void *tactile_thread(void *arg)
 {
    #if TACTILE
-   struct TactileDataState  *config = (struct TactileDataState  *) arg;
+   struct TactileDataState  *config = (struct TactileDataState *) arg;
    GlobalConfig *cfg = config->global;
 
    char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);
 
    unsigned long lastUpdateTime = GetTickCountMicroseconds();
 
-
+   fprintf(stderr,"Tactile thread started..\n");
 
 
    FILE * FrFD   = 0;
@@ -145,7 +145,35 @@ void *tactile_thread(void *arg)
    fclose(FpsdFD);
 
    }
+     else
+   if (config->tactile_shm_stream!=0)
+   {
+   fprintf(stderr,"Tactile thread will stream\n");
+
+    while (*config->keep_running)
+    {
+     unsigned long now = GetTickCountMicroseconds();
+
+
+     if (now - lastUpdateTime > 10000)
+     {
+      // fprintf(stderr,"Tac ");
+      fflush(stderr);
+     }
+
+     usleep(1000);
+    }
+
+   }
+
    #endif // TACTILE
+
+
+
+
+
+
+   fprintf(stderr,"Tactile thread exiting..\n");
 
    return 0;
 }

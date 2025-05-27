@@ -24,6 +24,7 @@ struct TactileDataState
   //-------------------------------------------------------
   unsigned int currentSample;
   //-------------------------------------------------------
+  void * tactile_shm_stream;
 };
 
 int addTactileForceReading(ATINetFTConfig *config, unsigned long timestamp, double fX,double fY,double fZ,double tX,double tY,double tZ);

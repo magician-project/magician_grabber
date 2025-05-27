@@ -23,6 +23,19 @@
 #include <execinfo.h>
 #include <unistd.h>
 
+#include <stdarg.h>
+
+void debug_message(const char *format, ...)
+{
+    #if DEBUG_MESSAGES
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    #endif // DEBUG_MESSAGES
+}
+
+
 void handle_segfault(int sig)
 {
     void *array[100];
@@ -48,8 +61,9 @@ void setup_signal_handlers()
 
     if (sigaction(SIGSEGV, &sa, NULL) == -1)
     {
-        perror("sigaction");
-       // exit(EXIT_FAILURE);
+        debug_message("sigaction");
+        //perror("sigaction");
+        //exit(EXIT_FAILURE);
         abort();
     }
 }
@@ -223,7 +237,7 @@ void copy_to_shared_memory(struct VideoFrame *frame, const void* src, size_t n)
         {
            if (frame->frame_size >= n)
            {
-             //fprintf(stderr,"Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
+             fprintf(stderr,"Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
              memcpy(frame->client_address_space_data_pointer,src, n);
            }
         }
@@ -285,7 +299,7 @@ int createSharedMemoryContextDescriptor(const char *path)
     if (shm_fd == -1)
     {
         fprintf(stderr,RED "shm_open\n" NORMAL);
-        perror("shm_open");
+        //perror("shm_open");
         return -1;
     }
 
@@ -293,7 +307,7 @@ int createSharedMemoryContextDescriptor(const char *path)
     if (ftruncate(shm_fd, total_size) == -1)
     {
         fprintf(stderr,RED "ftruncate\n" NORMAL);
-        perror("ftruncate");
+        //perror("ftruncate");
         close(shm_fd);
         return -1;
     }
@@ -302,7 +316,7 @@ int createSharedMemoryContextDescriptor(const char *path)
     if (context == MAP_FAILED)
     {
         fprintf(stderr,RED "mmap\n" NORMAL);
-        perror("mmap");
+        //perror("mmap");
         close(shm_fd);
         return -1;
     }
@@ -328,14 +342,14 @@ int create_frame_shared_memory(struct VideoFrame *frame)
     if (shm_fd == -1)
     {
         fprintf(stderr,RED "shm_open frame\n" NORMAL);
-        perror("shm_open frame");
+        //perror("shm_open frame");
         return -1;
     }
 
     if (ftruncate(shm_fd, frame->frame_size) == -1)
     {
         fprintf(stderr,RED "ftruncate frame\n" NORMAL);
-        perror("ftruncate frame");
+        //perror("ftruncate frame");
         close(shm_fd);
         return -1;
     }
@@ -367,7 +381,7 @@ unsigned char * map_frame_shared_memory(struct VideoFrame *frame,int copyToVideo
     if (shm_fd  == -1)
     {
         fprintf(stderr,RED "shm_open frame\n" NORMAL);
-        perror("shm_open frame");
+        //perror("shm_open frame");
         return NULL;
     }
 
@@ -375,7 +389,7 @@ unsigned char * map_frame_shared_memory(struct VideoFrame *frame,int copyToVideo
     if (result  == MAP_FAILED)
     {
         fprintf(stderr,RED "mmap frame\n" NORMAL);
-        perror("mmap frame");
+        //perror("mmap frame");
         close(shm_fd);
         return NULL;
     }
@@ -452,6 +466,11 @@ unsigned int getVideoFrameChannels(struct VideoFrame * frame)
   }
   return 0;
 }
+
+
+
+
+
 //------------------------------------------------------------
 //------------------------------------------------------------
 //------------------------------------------------------------
@@ -464,7 +483,7 @@ int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * st
       {
          if (strcmp(streamName,context->buffer[i].name)==0)
          {
-           fprintf(stderr,"Stream already existing \n");
+           fprintf(stderr,"Stream already exists\n");
            contextID = i;
          }
       }
@@ -491,6 +510,49 @@ int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * st
    return EXIT_FAILURE;
 }
 
+
+
+//------------------------------------------------------------
+//------------------------------------------------------------
+//------------------------------------------------------------
+int createGenericMetaData(struct SharedMemoryContext* context,const char * streamName,unsigned int dataSize)
+{
+   if (context!=0)
+   {
+      int contextID = -1;
+      for (unsigned int i=0; i<context->numberOfBuffers; i++)
+      {
+         if (strcmp(streamName,context->buffer[i].name)==0)
+         {
+           fprintf(stderr,"Stream already exists\n");
+           contextID = i;
+         }
+      }
+
+      if (contextID==-1)
+      {
+         fprintf(stderr,"Creating new stream %s\n",streamName);
+         contextID = context->numberOfBuffers++;
+      }
+    // Example to add a new buffer (Server)
+    struct VideoFrame *newBuffer = &context->buffer[contextID];
+    snprintf(newBuffer->name,MAX_SHM_NAME,"%s",streamName);
+    newBuffer->width      = dataSize;
+    newBuffer->height     = 1;
+    newBuffer->channels   = 1;
+    newBuffer->frame_size = dataSize;
+
+    if (create_frame_shared_memory(newBuffer) == 0)
+    {
+     return EXIT_SUCCESS;
+    }
+
+   }
+   return EXIT_FAILURE;
+}
+
+
+
 // Destroy a video frame and its shared memory
 int destroyVideoFrame(struct SharedMemoryContext* context, const char *streamName)
 {
@@ -506,7 +568,8 @@ int destroyVideoFrame(struct SharedMemoryContext* context, const char *streamNam
         }
     }
 
-    if (index == -1) {
+    if (index == -1)
+    {
         fprintf(stderr, "Stream %s not found\n", streamName);
         return EXIT_FAILURE;
     }
@@ -518,7 +581,7 @@ int destroyVideoFrame(struct SharedMemoryContext* context, const char *streamNam
         // Unmap the shared memory
         if (munmap(frame->client_address_space_data_pointer, frame->frame_size) == -1)
         {
-            perror("munmap frame");
+            debug_message("munmap frame");
             return EXIT_FAILURE;
         }
         frame->client_address_space_data_pointer = NULL;
@@ -527,7 +590,7 @@ int destroyVideoFrame(struct SharedMemoryContext* context, const char *streamNam
     // Remove the shared memory object
     if (shm_unlink(frame->name) == -1)
     {
-        perror("shm_unlink frame");
+        debug_message("shm_unlink frame");
         return EXIT_FAILURE;
     }
 
@@ -556,8 +619,8 @@ struct SharedMemoryContext* connectToSharedMemoryContextDescriptor(const char *p
     int shm_fd = shm_open(path, O_RDWR, 0666);
     if (shm_fd == -1)
     {
-        fprintf(stderr,RED "shm_open frame\n" NORMAL);
-        perror("shm_open");
+        debug_message(RED "shm_open frame\n" NORMAL);
+        //perror("shm_open");
         return NULL;
     }
 
@@ -565,8 +628,8 @@ struct SharedMemoryContext* connectToSharedMemoryContextDescriptor(const char *p
     struct SharedMemoryContext *context = (struct SharedMemoryContext*) mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (context == MAP_FAILED)
     {
-        fprintf(stderr,RED "mmap\n" NORMAL);
-        perror("mmap");
+        debug_message(RED "mmap failed\n" NORMAL);
+        //perror("mmap");
         close(shm_fd);
         return NULL;
     }
@@ -580,7 +643,7 @@ int startWritingToVideoBufferPointer(struct VideoFrame *vf)
 {
     if (vf==0) { return 0; }
 
-    //fprintf(stderr,"startWritingToVideoBufferPointer :");
+    debug_message("startWritingToVideoBufferPointer :");
     int attempts = 0;
     int result   = 0;
 
@@ -601,10 +664,10 @@ int startWritingToVideoBufferPointer(struct VideoFrame *vf)
 
     if (!result)
     {
-        //fprintf(stderr,RED "failed\n" NORMAL);
+        debug_message(RED "failed\n" NORMAL);
         return 0; // Buffer is already locked and we timed out waiting for it
     }
-    //fprintf(stderr,GREEN "success\n" NORMAL);
+    debug_message(GREEN "success\n" NORMAL);
     return 1; // We have locked the buffer
 }
 
@@ -612,9 +675,9 @@ int startWritingToVideoBufferPointer(struct VideoFrame *vf)
 int stopWritingToVideoBufferPointer(struct VideoFrame *vf)
 {
     if (vf==0) { return 0; }
-    //fprintf(stderr,"stopWritingToVideoBufferPointer :");
+    debug_message("stopWritingToVideoBufferPointer :");
     __sync_lock_release(&vf->locked);
-    //fprintf(stderr,GREEN "success\n" NORMAL);
+    debug_message(GREEN "success\n" NORMAL);
     return 1;
 }
 

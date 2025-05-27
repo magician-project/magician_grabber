@@ -31,6 +31,7 @@
 #include "tactileFeatures.h"
 
 //Shared memory for streaming
+#include "tactileStreamer.h"
 #include "imageStreamer.h"
 #include "sharedMemoryVideoBuffers.h"
 
@@ -38,6 +39,12 @@
 
 //Callback defaults
 #include "callbacks.h"
+
+
+#if TACTILE
+#include "tactile_processor/TactileFeaturesProcessor.hpp"
+#endif // TACTILE
+
 
 static const char MagicianGrabberVersion[]="0.96";
 
@@ -119,6 +126,7 @@ int main (int argc, char **argv)
     cfg.keep_running = 1;
     cfg.run_forever  = 0;
     cfg.countdown    = 0;
+    cfg.speak        = 0;
     cfg.viewer       = 0;
 
 
@@ -133,7 +141,7 @@ int main (int argc, char **argv)
     cfg.useTeensy    = 0;
     cfg.useCamera    = 0;
     cfg.useATIForce  = 0;
-    cfg.streamCamera = 0;
+    cfg.streamData = 0;
 
     #if TACTILE
     cfg.calculateTactileFeatures    = 0;
@@ -187,7 +195,7 @@ int main (int argc, char **argv)
 
    if (cfg.countdown!=0)
    {
-      countdownBeforeStart(cfg.countdown);
+      countdownBeforeStart(cfg.countdown,cfg.speak);
    }
 
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)
@@ -219,43 +227,61 @@ int main (int argc, char **argv)
     //system("stty -F /dev/ttyACM0 115200 raw -echo");
     //system("stty -F /dev/ttyACM1 115200 raw -echo");
 
+
+
+
     #if TACTILE
-    //printf("Tactile Feature Procsessor version : %s\n",TactileFeatureProcessorVersion);
+    printf("Tactile Feature Processor version : %s\n",TactileFeatureProcessorVersion);
     cfg.interceptKeyboard = 0; //Do not intercept keyboard until crashes are resolved
     cfg.calculateTactileFeatures = (cfg.useTeensy) && (cfg.useATIForce);
-    pthread_t tactile_tid;
+    pthread_t tactile_tid = 0;
     struct TactileDataState  tactile_config = {&cfg, &cfg.keep_running, 0, 0};
+
+    StreamingTactileContext * streaming_tactile_context=0;
+    if ( (cfg.streamData) && (cfg.calculateTactileFeatures) )
+         {
+           fprintf(stderr,"Starting Tactile Stream..\n");
+           streaming_tactile_context = startTactileStream("tactile_frames.shm", "stream_tactile", TACTILE_STREAMING_WINDOW, TACTILE_STREAMING_ELEMENTS);
+           tactile_config.tactile_shm_stream = (void*) streaming_tactile_context;
+           if (tactile_config.tactile_shm_stream==NULL)
+                                  {  fprintf(stderr,RED "Failed to start streaming tactile data to shared memory!\n" NORMAL); exit(1); }
+           if (streaming_tactile_context->frame==NULL)
+                                  {  fprintf(stderr,RED "Failed to establish data frame!\n" NORMAL); exit(1); }
+         }
+    #endif // TACTILE
+
+
+
+    #if TACTILE
+    //After (potentially) acquiring the streaming tactile context let's start the thread
+
     if (cfg.calculateTactileFeatures)
     {
         teensy_config.callback   = (void*) addTactileAccelerometerReading;//accelerometer_callback;
         atinetft_config.callback = (void*) addTactileForceReading;//force_callback;
-        pthread_create(&tactile_tid,    NULL, tactile_thread,    &tactile_config);
+        pthread_create(&tactile_tid, NULL, tactile_thread, &tactile_config);
     }
     #endif // TACTILE
 
 
     StreamingContext * streaming_context=0;
 
-    if ( (cfg.streamCamera) && (cfg.useCamera) )
+    if ( (cfg.streamData) && (cfg.useCamera) )
                          {
-                           fprintf(stderr,"Starting stream..\n");
+                           fprintf(stderr,"Starting Camera Stream..\n");
                            //We transport the raw sensor as 1 channel! (hence the 1 in next line)
                            streaming_context = startStream("video_frames.shm", "stream1", cfg.width, cfg.height, 1);
                            camera_config.camera_shm_stream = (void*) streaming_context;
                            //fprintf(stderr,"Main Thread shm=%p\n",streaming_context);
                            //fprintf(stderr,"Main Thread #2 shm=%p\n",camera_config.camera_shm_stream);
                            if (camera_config.camera_shm_stream==NULL)
-                           {
-                               fprintf(stderr,"Failed to start streaming to shared memory!\n");
-                               exit(1);
-                           }
-
+                                  { fprintf(stderr,RED "Failed to start streaming images to shared memory!\n" NORMAL); exit(1); }
                            if (streaming_context->frame==NULL)
-                           {
-                               fprintf(stderr,"Failed to establish video frame!\n");
-                               exit(1);
-                           }
+                                  {  fprintf(stderr,RED "Failed to establish image video frame!\n" NORMAL); exit(1); }
                          }
+
+
+
 
     //Arduino takes some time to powerup
     if (cfg.useArduino)  { pthread_create(&arduino_tid,    NULL, arduino_thread,    &arduino_config);  }
@@ -285,7 +311,7 @@ int main (int argc, char **argv)
 
                              if (timeCheck>300)
                              {
-                               fprintf(stderr,"\nCamera timed-out (%u ticks)..\n",timeCheck);
+                               fprintf(stderr,RED "\nCamera timed-out (%u ticks)..\n" NORMAL,timeCheck);
                                cfg.keep_running = 0; //<- this will make the program exit
                                break;
                              }
@@ -301,13 +327,13 @@ int main (int argc, char **argv)
     if (cfg.viewer)
     {
         int i=system("viewer/viewer.sh&");
-        if (i!=0) { fprintf(stderr,"Failed executing viewer!\n"); }
+        if (i!=0) { fprintf(stderr,RED "Failed executing viewer!\n" NORMAL); }
     }
 
     //Enable keystrokes to be received without blocking execution
     int key = 0;
     if (cfg.interceptKeyboard)
-          { set_nonblocking_mode(); }
+             { set_nonblocking_mode(); }
 
     unsigned long startTime = GetTickCountMicroseconds();
     unsigned long currentTime = startTime;
@@ -343,7 +369,7 @@ int main (int argc, char **argv)
 
         printf("\r");
         //-----------------------------------------------------------------------------------------------------------------
-        if (cfg.streamCamera) { broadcasting(camera_config.framesCaptured); }
+        if (cfg.streamData)   { broadcasting(camera_config.framesCaptured); }
         if (cfg.run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
                           {
                            printf(GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );

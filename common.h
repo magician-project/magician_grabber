@@ -37,6 +37,8 @@ extern "C"
 #include "colors.h"
 #include "performance.h"
 
+#define TACTILE_STREAMING_WINDOW 4000
+#define TACTILE_STREAMING_ELEMENTS 16
 
 static char arduinoUseRoundLight[]    = {"r\n"};
 static char arduinoUseDistanceLight[] = {"a\n"};
@@ -55,16 +57,18 @@ typedef struct
     char viewer             ;
     unsigned char countdown ;
 
+    char speak;
     char manual_trigger_light;
 
     // Modules available to use
-    char interceptKeyboard ;
+    char simulate;
+    char interceptKeyboard;
     char useRAM       ;
     char useArduino   ;
     char useTeensy    ;
     char useCamera    ;
     char useATIForce  ;
-    char streamCamera ;
+    char streamData   ;
 
     char * arduinoExtraCommand;
 
@@ -72,7 +76,7 @@ typedef struct
     char teensyPath[128];
 
     #if TACTILE
-    char calculateTactileFeatures    ;
+    char calculateTactileFeatures;
     #endif // TACTILE
 
 
@@ -207,7 +211,7 @@ static void progress_bar(unsigned long runningTimeInSeconds,unsigned long maxTim
   printf("] ");
 }
 
-static void countdownBeforeStart(unsigned int countdown)
+static void countdownBeforeStart(unsigned int countdown,char speak)
 {
    fprintf(stderr,"Performing initial countdown (%u seconds) : ",countdown);
 
@@ -218,7 +222,7 @@ static void countdownBeforeStart(unsigned int countdown)
        {
          unsigned int remaining = (unsigned int) countdown-c;
 
-         if (remaining<=3)
+         if ( (remaining<=3) && (speak) )
          {
           snprintf(whatToSay,100,"echo \"%u\" | festival --tts&",remaining);
           i=system(whatToSay);
@@ -230,9 +234,12 @@ static void countdownBeforeStart(unsigned int countdown)
        }
    fprintf(stderr,"\n");
 
-   snprintf(whatToSay,100,"echo \"Start\" | festival --tts&");
-   i=system(whatToSay);
-   if (i!=0) {  fprintf(stderr,"Failed executing : %s\n",whatToSay);}
+   if (speak)
+   {
+     snprintf(whatToSay,100,"echo \"Start\" | festival --tts&");
+     i=system(whatToSay);
+     if (i!=0) {  fprintf(stderr,"Failed executing : %s\n",whatToSay);}
+   }
 }
 
 
@@ -297,6 +304,7 @@ static void print_help()
 {
     printf("Usage: magician_grabber [OPTIONS]\n\n");
     printf("Options:\n");
+    printf("  --simulate                Simulate Devices (development).\n");
     printf("  -o, --output <path>       Set the output directory.\n");
     printf("  --arduino <path>          Set the path to arduino (def. /dev/ttyACM0).\n");
     printf("  --teensy <path>           Set the path to teensy (def. /dev/ttyACM1).\n");
@@ -322,6 +330,7 @@ static void print_help()
     printf("  --dlight                  Use lighting based on distance sensor.\n");
     printf("  --rlight                  Use round-robin lighting.\n");
     printf("  --tlight                  Use patterned lighting.\n");
+    printf("  --speak                   Use TTS.\n");
     printf("  --rt                      Set real-time priority (requires privileges).\n");
     printf("  --all                     Enable all available devices.\n");
     printf("  --stream                  Stream camera data to shared memory (disables file output).\n");
@@ -347,6 +356,17 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
          print_help();
          exit(0);
+        } else
+        if (strcmp(argv[i], "--simulate") == 0)
+        {
+           cfg->simulate = 1;
+           cfg->interceptKeyboard = 0;
+           #if TACTILE
+           cfg->calculateTactileFeatures = 1;
+           cfg->useTeensy =1;
+           cfg->useATIForce =1;
+           #endif // TACTILE
+           fprintf(stderr,"Simulating input\n");
         } else
         if (strcmp(argv[i],"--arduino")==0)
         {
@@ -454,7 +474,7 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         else if ( (strcmp(argv[i],"--view")==0) || (strcmp(argv[i],"--viewer")==0) )
         {
             cfg->viewer=1;
-            cfg->streamCamera = 1;
+            cfg->streamData = 1;
             cfg->useCamera    = 1;
             fprintf(stderr,"Also running viewer..\n");
         }
@@ -462,6 +482,16 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->useCamera = 1;
             fprintf(stderr,"Activating Camera\n");
+        }
+        else if (strcmp(argv[i],"--nocamera")==0)
+        {
+            cfg->useCamera = 0;
+            fprintf(stderr,"Deactivating Camera\n");
+        }
+        else if (strcmp(argv[i],"--speak")==0)
+        {
+            cfg->speak = 1;
+            fprintf(stderr,"Activating Speaking\n");
         }
         else if (strcmp(argv[i],"--force")==0)
         {
@@ -523,7 +553,7 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         }
         else if (strcmp(argv[i],"--stream")==0)
         {
-            cfg->streamCamera = 1;
+            cfg->streamData = 1;
             cfg->useCamera    = 1;
             cfg->useArduino   = 1;
             cfg->run_forever  = 1;
