@@ -47,7 +47,20 @@ const char * Apsd_filename = "";
 unsigned long countAcc=0, countForce=0;
 unsigned long countFr=0, countAs=0, countAps=0 , countFpsd=0;
 
+//-------------------------------
+std::vector<float> vfTimestamp;
+std::vector<float> vfX;
+std::vector<float> vfY;
+std::vector<float> vfZ;
+//-------------------------------
+std::vector<float> vaccTimestamp;
+std::vector<float> vaccX;
+std::vector<float> vaccY;
+std::vector<float> vaccZ;
+//-------------------------------
 
+
+//Main Processor 
 TactileFeaturesProcessor processor(F_input_fs, F_dec_fact, A_input_fs, A_dec_fact,
                                    Fr_win_size, Fr_ovlp, Fr_highcutf, Fr_lowcutf, Fr_filename,
                                    As_win_size, As_ovlp, As_highcutf, As_filename,
@@ -61,6 +74,14 @@ int tactile_add_force(unsigned long timestamp, double fX , double fY, double fZ)
   //std::cerr<<"tactile_add_force with "<<fX<<" "<<fY<<"  "<<fZ<<"\n";
   double timestampF = ( double )  timestamp / 1000000;
   processor.addForceData({timestampF, {fX, fY, fZ}});
+
+  //Also hold raw data
+  vfTimestamp.push_back(timestamp);
+  vfX.push_back(fX);
+  vfY.push_back(fY);
+  vfZ.push_back(fZ);
+  //--------------------
+
   return 1;
 }
 
@@ -71,6 +92,15 @@ int tactile_add_acc(unsigned long timestamp, double accX , double accY, double a
   //std::cerr<<"tactile_add_acc with "<<accX<<" "<<accY<<"  "<<accZ<<"\n";
   double timestampF = ( double )  timestamp / 1000000;
   processor.addAccelerationData({timestampF, {accX, accY, accZ}});
+
+
+  //Also hold raw data
+  vaccTimestamp.push_back(timestamp);
+  vaccX.push_back(accX);
+  vaccY.push_back(accY);
+  vaccZ.push_back(accZ);
+  //--------------------
+
   return 1;
 }
 
@@ -149,7 +179,9 @@ int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int wi
          (elements<=processor.Fr_processor.size()) &&
          (elements<=processor.As_processor.size()) &&
          (elements<=processor.Apsd_processor.size()) &&
-         (elements<=processor.Fpsd_processor.size()) 
+         (elements<=processor.Fpsd_processor.size()) &&
+         (elements<=vfTimestamp.size()) &&
+         (elements<=vaccTimestamp.size()) 
        )
       {
         unsigned int memBase = 0;
@@ -157,46 +189,83 @@ int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int wi
         //Friction
         //===============================================================================
         std::vector<DataPoint> resultsFr = processor.getFrictionResults(window_elements);
-        for (unsigned int i =0; i<resultsFr.size(); i++)
+        for (unsigned int i =0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*2 + 0] = (float) resultsFr[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsFr[i].values[0];
          }
-         memBase += resultsFr.size() * 2; 
+         memBase += window_elements * 2; 
         //===============================================================================
 
         //Acceleration spikes
         //===============================================================================
         std::vector<DataPoint> resultsAs = processor.getAccSpikeResults(window_elements);
-        for (unsigned int i =0; i<resultsAs.size(); i++)
+        for (unsigned int i =0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*2 + 0] = (float) resultsAs[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsAs[i].values[0];
          }
-         memBase += resultsAs.size() * 2; 
+         memBase += window_elements * 2; 
         //===============================================================================
 
         //Acceleration PSD
         //===============================================================================
         std::vector<DataPoint> resultsAccPSD = processor.getAccPSDResults(window_elements);
-        for (unsigned int i =0; i<resultsAccPSD.size(); i++)
+        for (unsigned int i =0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*2 + 0] = (float) resultsAccPSD[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsAccPSD[i].values[0];
          }
-         memBase += resultsAccPSD.size() * 2; 
+         memBase += window_elements * 2; 
         //===============================================================================
 
         //Force PSD
         //=============================================================================== 
         std::vector<DataPoint> resultsFPSD = processor.getForcePSDResults(window_elements);
-        for (unsigned int i =0; i<resultsFPSD.size(); i++)
+        for (unsigned int i =0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*2 + 0] = (float) resultsFPSD[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsFPSD[i].values[0];
          }
-         memBase += resultsFPSD.size() * 2; 
+         memBase += window_elements * 2; 
         //=============================================================================== 
+
+
+
+        //fX fY fZ
+        //===============================================================================
+        for (unsigned int i=0; i<window_elements; i++)
+         {
+           memAsFloat[memBase + i*4 + 0] = (float) vfTimestamp[i];
+           memAsFloat[memBase + i*4 + 1] = (float) vfX[i];
+           memAsFloat[memBase + i*4 + 2] = (float) vfY[i];
+           memAsFloat[memBase + i*4 + 3] = (float) vfZ[i];
+         }
+
+         vfTimestamp.erase(vfTimestamp.begin(), vfTimestamp.begin() + window_elements);
+         vfX.erase(vfX.begin(), vfX.begin() + window_elements);
+         vfY.erase(vfY.begin(), vfY.begin() + window_elements);
+         vfZ.erase(vfZ.begin(), vfZ.begin() + window_elements);
+         memBase += window_elements * 4; 
+        //=============================================================================== 
+
+        //accX accY accZ
+        //===============================================================================
+        for (unsigned int i=0; i<window_elements; i++)
+         {
+           memAsFloat[memBase + i*4 + 0] = (float) vaccTimestamp[i];
+           memAsFloat[memBase + i*4 + 1] = (float) vaccX[i];
+           memAsFloat[memBase + i*4 + 2] = (float) vaccY[i];
+           memAsFloat[memBase + i*4 + 3] = (float) vaccZ[i];
+         }
+
+         vaccTimestamp.erase(vaccTimestamp.begin(), vaccTimestamp.begin() + window_elements);
+         vaccX.erase(vaccX.begin(), vaccX.begin() + window_elements);
+         vaccY.erase(vaccY.begin(), vaccY.begin() + window_elements);
+         vaccZ.erase(vaccZ.begin(), vaccZ.begin() + window_elements);
+         memBase += window_elements * 4; 
+        //=============================================================================== 
+
  
         return 1;
       } 
