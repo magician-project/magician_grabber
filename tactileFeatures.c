@@ -160,11 +160,11 @@ void *tactile_thread(void *arg)
      if (now - lastUpdateTime > 10000)
      {
       // fprintf(stderr,"Tac ");
-
-       if ( tactile_write_shared_memory((void*) streaming_tactile_context->data.data,TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW,TACTILE_STREAMING_WINDOW * sizeof(float)) )
+       unsigned int dataSize = TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW * sizeof(float);
+       if ( tactile_write_shared_memory((void*) streaming_tactile_context->data.data,dataSize,TACTILE_STREAMING_WINDOW) )
        {
          streaming_tactile_context->data.timestamp = now;
-         streaming_tactile_context->data.data_size = TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW * sizeof(float);
+         streaming_tactile_context->data.data_size = dataSize;
 
          //stream_image(shm_stream->frame,&dataAsImage);
          stream_tactile(streaming_tactile_context->frame,&streaming_tactile_context->data);

@@ -60,7 +60,7 @@ std::vector<float> vaccZ;
 //-------------------------------
 
 
-//Main Processor 
+//Main Processor
 TactileFeaturesProcessor processor(F_input_fs, F_dec_fact, A_input_fs, A_dec_fact,
                                    Fr_win_size, Fr_ovlp, Fr_highcutf, Fr_lowcutf, Fr_filename,
                                    As_win_size, As_ovlp, As_highcutf, As_filename,
@@ -172,20 +172,32 @@ int tactile_write_disk(FILE* FrFD, FILE* AsFD, FILE* ApsdFD , FILE* FpsdFD)
 
 int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int window_elements)
 {
+    if (mem==0) {fprintf(stderr,"tactile_write_shared_memory called without memory"); return 0; }
     float * memAsFloat = (float*) mem;
 
-    int elements = (int) window_elements;
-    if ( 
-         (elements<=processor.Fr_processor.size()) &&
-         (elements<=processor.As_processor.size()) &&
-         (elements<=processor.Apsd_processor.size()) &&
-         (elements<=processor.Fpsd_processor.size()) &&
+    /*
+    fprintf(stderr,"Fr_processor %u \n",processor.Fr_processor.size());
+    fprintf(stderr,"As_processor %u \n",processor.As_processor.size());
+    fprintf(stderr,"Apsd_processor %u \n",processor.Apsd_processor.size());
+    fprintf(stderr,"Fpsd_processor %u \n",processor.Fpsd_processor.size());
+    fprintf(stderr,"vfTimestamp %u \n",vfTimestamp.size());
+    fprintf(stderr,"vaccTimestamp %u \n",vaccTimestamp.size());
+    */
+
+    long unsigned int elements = (long unsigned int) window_elements;
+    if (
+         //(elements<=processor.Fr_processor.size()) &&
+         //(elements<=processor.As_processor.size()) &&
+         //(elements<=processor.Apsd_processor.size()) &&
+         //(elements<=processor.Fpsd_processor.size()) &&
          (elements<=vfTimestamp.size()) &&
-         (elements<=vaccTimestamp.size()) 
+         (elements<=vaccTimestamp.size())
        )
       {
         unsigned int memBase = 0;
-        fprintf(stderr,"\n\nEmitting Tactile Shared Memory \n\n");
+        #define NORMAL  "\033[0m"
+        fprintf(stderr,NORMAL "\n\nEmitting Tactile Shared Memory of %lu elements \n\n" NORMAL,elements);
+/*
         //Friction
         //===============================================================================
         std::vector<DataPoint> resultsFr = processor.getFrictionResults(window_elements);
@@ -194,7 +206,7 @@ int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int wi
            memAsFloat[memBase + i*2 + 0] = (float) resultsFr[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsFr[i].values[0];
          }
-         memBase += window_elements * 2; 
+         memBase += window_elements * 2;
         //===============================================================================
 
         //Acceleration spikes
@@ -205,7 +217,7 @@ int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int wi
            memAsFloat[memBase + i*2 + 0] = (float) resultsAs[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsAs[i].values[0];
          }
-         memBase += window_elements * 2; 
+         memBase += window_elements * 2;
         //===============================================================================
 
         //Acceleration PSD
@@ -216,59 +228,65 @@ int tactile_write_shared_memory(void* mem, unsigned int mem_size,unsigned int wi
            memAsFloat[memBase + i*2 + 0] = (float) resultsAccPSD[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsAccPSD[i].values[0];
          }
-         memBase += window_elements * 2; 
+         memBase += window_elements * 2;
         //===============================================================================
 
         //Force PSD
-        //=============================================================================== 
+        //===============================================================================
         std::vector<DataPoint> resultsFPSD = processor.getForcePSDResults(window_elements);
         for (unsigned int i =0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*2 + 0] = (float) resultsFPSD[i].timestamp;
            memAsFloat[memBase + i*2 + 1] = (float) resultsFPSD[i].values[0];
          }
-         memBase += window_elements * 2; 
-        //=============================================================================== 
-
+         memBase += window_elements * 2;
+        //===============================================================================
+*/
 
 
         //fX fY fZ
         //===============================================================================
+        long unsigned int maximum_force_element = (memBase + window_elements*4) * sizeof(float);
+        if (mem_size<maximum_force_element) { fprintf(stderr,"Out of bounds force (%lu)\n",maximum_force_element); return 0; }
         for (unsigned int i=0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*4 + 0] = (float) vfTimestamp[i];
            memAsFloat[memBase + i*4 + 1] = (float) vfX[i];
            memAsFloat[memBase + i*4 + 2] = (float) vfY[i];
            memAsFloat[memBase + i*4 + 3] = (float) vfZ[i];
+           //fprintf(stderr,"FORCE %f %f %f %f",vfTimestamp[i],vfX[i],vfY[i],vfZ[i]);
          }
 
          vfTimestamp.erase(vfTimestamp.begin(), vfTimestamp.begin() + window_elements);
          vfX.erase(vfX.begin(), vfX.begin() + window_elements);
          vfY.erase(vfY.begin(), vfY.begin() + window_elements);
          vfZ.erase(vfZ.begin(), vfZ.begin() + window_elements);
-         memBase += window_elements * 4; 
-        //=============================================================================== 
+         memBase += window_elements * 4;
+        //===============================================================================
 
         //accX accY accZ
         //===============================================================================
+        long unsigned int maximum_acc_element = (memBase + window_elements*4) * sizeof(float);
+        if (mem_size<maximum_acc_element ) { fprintf(stderr,"Out of bounds acc (%lu)\n",maximum_acc_element); return 0; }
         for (unsigned int i=0; i<window_elements; i++)
          {
            memAsFloat[memBase + i*4 + 0] = (float) vaccTimestamp[i];
            memAsFloat[memBase + i*4 + 1] = (float) vaccX[i];
            memAsFloat[memBase + i*4 + 2] = (float) vaccY[i];
            memAsFloat[memBase + i*4 + 3] = (float) vaccZ[i];
+           //fprintf(stderr,"VACC %f %f %f %f",vaccTimestamp[i],vaccX[i],vaccY[i],vaccZ[i]);
          }
 
          vaccTimestamp.erase(vaccTimestamp.begin(), vaccTimestamp.begin() + window_elements);
          vaccX.erase(vaccX.begin(), vaccX.begin() + window_elements);
          vaccY.erase(vaccY.begin(), vaccY.begin() + window_elements);
          vaccZ.erase(vaccZ.begin(), vaccZ.begin() + window_elements);
-         memBase += window_elements * 4; 
-        //=============================================================================== 
+         memBase += window_elements * 4;
+        //===============================================================================
 
- 
+        //  ./magician_grabber_tactile  --stream --simulate --nocamera
         return 1;
-      } 
+      }
       //else { fprintf(stderr,"\n\nNOT ENOUGH DATA FOR Emitting Tactile Shared Memory \n\n"); }
     return 0;
 }

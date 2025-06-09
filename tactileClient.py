@@ -14,14 +14,14 @@ def main(streamName):
     #=====================================================
     plt.ion()
     fig, axs = plt.subplots(2, 1, figsize=(10, 6))
-    line1, = axs[0].plot([], [], label="Acceleration PSD")
-    line2, = axs[1].plot([], [], label="Acceleration Spikeness")
+    line1, = axs[0].plot([], [], label="Force")
+    line2, = axs[1].plot([], [], label="Acceleration")
 
-    axs[0].set_title("Acceleration PSD")
-    axs[1].set_title("Acceleration Spikeness")
+    axs[0].set_title("Force")
+    axs[1].set_title("Acceleration")
     for ax in axs:
-        ax.set_xlim(0, WINDOW)
-        ax.set_ylim(-1, 1)
+        #ax.set_xlim(0, WINDOW)
+        #ax.set_ylim(-1, 1)
         ax.grid(True)
         ax.legend()
     plt.show(block=False)
@@ -54,6 +54,7 @@ def main(streamName):
          WINDOW = 4000
         """
 
+        """
         #=====================================================================
         frameStart = 0
         frameEnd   = WINDOW*2
@@ -79,17 +80,33 @@ def main(streamName):
         print("force_psd shape:", force_psd.shape) 
         print("force_psd :", force_psd) 
         #=====================================================================
+        """
 
+
+
+        #=====================================================================
+        frameStart = 0
+        frameEnd   = WINDOW*4
+        force = frame[frameStart:frameEnd].reshape(-1, 4)
+        print("force shape:", force.shape)
+        print("force :",force)
+        #=====================================================================
+        frameStart = frameEnd
+        frameEnd   = frameStart + WINDOW*4
+        acceleration = frame[frameStart:frameEnd].reshape(-1, 4)
+        print("acceleration shape:", acceleration.shape) 
+        print("acceleration :",acceleration)
+        #=====================================================================
         print("Data :",frame)
 
 
         # Plot the first channel of each for simplicity
         #=====================================================
-        line1.set_xdata(acceleration_psd[:, 0])
-        line1.set_ydata(acceleration_psd[:, 1])
+        line1.set_xdata(acceleration[:, 0])
+        line1.set_ydata(acceleration[:, 1])
 
-        line2.set_xdata(acceleration_spikeness[:, 0])
-        line2.set_ydata(acceleration_spikeness[:, 1])
+        line2.set_xdata(force[:, 0])
+        line2.set_ydata(force[:, 1])
 
         for ax in axs:
             ax.relim()

@@ -36,6 +36,7 @@ if grep -Fxq "$EXPORT_LINE" ~/.bashrc; then
 else
     echo "$EXPORT_LINE" >> ~/.bashrc
     echo "Added $TARGET_DIR to LD_LIBRARY_PATH in .bashrc"
+    source ~/.bashrc
 fi
 
 

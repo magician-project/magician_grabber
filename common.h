@@ -38,7 +38,8 @@ extern "C"
 #include "performance.h"
 
 #define TACTILE_STREAMING_WINDOW 4000
-#define TACTILE_STREAMING_ELEMENTS 16
+#define TACTILE_STREAMING_ELEMENTS 8
+//#define TACTILE_STREAMING_ELEMENTS 16 //Assuming everything enabled
 
 static char arduinoUseRoundLight[]    = {"r\n"};
 static char arduinoUseDistanceLight[] = {"a\n"};

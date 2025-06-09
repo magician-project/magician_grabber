@@ -52,6 +52,7 @@
 		</Unit>
 		<Unit filename="atiForceSensor.h" />
 		<Unit filename="callbacks.h" />
+		<Unit filename="colors.h" />
 		<Unit filename="common.h" />
 		<Unit filename="gigeCameraSensor.c">
 			<Option compilerVar="CC" />
@@ -74,6 +75,10 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="tactileFeatures.h" />
+		<Unit filename="tactileStreamer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="tactileStreamer.h" />
 		<Extensions>
 			<lib_finder disable_auto="1" />
 		</Extensions>
