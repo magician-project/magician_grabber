@@ -205,7 +205,7 @@ int main (int argc, char **argv)
 
     // Initialize Configurations
     //To debug aravis connection use : arv-camera-test-0.10  -d stream
-    ATINetFTConfig atinetft_config     = {&cfg, "192.168.200.11",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
+    ATINetFTConfig atinetft_config     = {&cfg, "192.168.1.1",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
     ArduinoSerialConfig teensy_config  = {&cfg, "copy from cfg later",    "tactile/accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0, NULL};
     ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, cfg.arduinoExtraCommand, 0, 0, 0.0, NULL};
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };
@@ -284,8 +284,9 @@ int main (int argc, char **argv)
 
 
     //Arduino takes some time to powerup
-    if (cfg.useArduino)  { pthread_create(&arduino_tid,    NULL, arduino_thread,    &arduino_config);  }
+    if (cfg.useArduino)  { fprintf(stderr,"Creating Arduino Thread\n"); pthread_create(&arduino_tid,    NULL, arduino_thread,    &arduino_config);  }
     if (cfg.useTeensy)   {
+                            fprintf(stderr,"Creating Teensy Thread\n");
                            /*
                               char *teensy_port = find_teensy_port();
                               if (teensy_port) { fprintf(stderr,GREEN "Teensy found on: %s\n" NORMAL, teensy_port); } else

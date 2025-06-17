@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+#sudo apt-get install python3-tk
 #matplotlib.use('TkAgg')  # or 'Qt5Agg' if you have PyQt5 or PySide2
 print(matplotlib.get_backend())
 from SharedMemoryManager import SharedMemoryManager
@@ -17,8 +18,8 @@ def main(streamName):
     line1, = axs[0].plot([], [], label="Force")
     line2, = axs[1].plot([], [], label="Acceleration")
 
-    axs[0].set_title("Force")
-    axs[1].set_title("Acceleration")
+    axs[0].set_title("Acceleration")
+    axs[1].set_title("Force")
     for ax in axs:
         #ax.set_xlim(0, WINDOW)
         #ax.set_ylim(-1, 1)
@@ -106,7 +107,7 @@ def main(streamName):
         line1.set_ydata(acceleration[:, 1])
 
         line2.set_xdata(force[:, 0])
-        line2.set_ydata(force[:, 1])
+        line2.set_ydata(force[:, 3])
 
         for ax in axs:
             ax.relim()
