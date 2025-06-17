@@ -369,6 +369,10 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
            #endif // TACTILE
            fprintf(stderr,"Simulating input\n");
         } else
+        if (strcmp(argv[i],"--noarduino")==0)
+        {
+              cfg->useArduino = 0;
+        } else
         if (strcmp(argv[i],"--arduino")==0)
         {
             if (argc>i+1)
