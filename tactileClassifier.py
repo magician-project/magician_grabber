@@ -1,0 +1,89 @@
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+#sudo apt-get install python3-tk
+#matplotlib.use('TkAgg')  # or 'Qt5Agg' if you have PyQt5 or PySide2
+print(matplotlib.get_backend())
+from SharedMemoryManager import SharedMemoryManager
+
+def main(streamName): 
+
+    WINDOW = 4000 #ONLY MICHELE CHANGES THIS!!!
+ 
+    #=====================================================
+    # Set up interactive plotting
+    #=====================================================
+    plt.ion()
+    fig, axs = plt.subplots(2, 1, figsize=(10, 6))
+    line1, = axs[0].plot([], [], label="Force")
+    line2, = axs[1].plot([], [], label="Acceleration")
+
+    axs[0].set_title("Acceleration")
+    axs[1].set_title("Force")
+    for ax in axs:
+        #ax.set_xlim(0, WINDOW)
+        #ax.set_ylim(-1, 1)
+        ax.grid(True)
+        ax.legend()
+    plt.show(block=False)
+    #=====================================================
+
+
+    smm = SharedMemoryManager("libSharedMemoryVideoBuffers.so", 
+                              descriptor = "tactile_frames.shm", 
+                              frameName  = streamName,
+                              connect    = True)
+
+    # Loop to continuously read frames 
+    while True:
+        # Capture frame-by-frame
+        frameRaw = smm.read_from_shared_memory()
+
+        frame = np.frombuffer(frameRaw, dtype=np.float32)
+        #Frame is bytes it should be cast as float32
+
+        #=====================================================================
+        frameStart = 0
+        frameEnd   = WINDOW*4
+        force = frame[frameStart:frameEnd].reshape(-1, 4)
+        print("force shape:", force.shape)
+        print("force :",force)
+        #=====================================================================
+        frameStart = frameEnd
+        frameEnd   = frameStart + WINDOW*4
+        acceleration = frame[frameStart:frameEnd].reshape(-1, 4)
+        print("acceleration shape:", acceleration.shape) 
+        print("acceleration :",acceleration)
+        #=====================================================================
+        print("Data :",frame)
+
+       # CALL PIPPLE(force,acceleration)
+
+        # Plot the first channel of each for simplicity
+        #=====================================================
+        line1.set_xdata(acceleration[:, 0])
+        line1.set_ydata(acceleration[:, 1])
+
+        line2.set_xdata(force[:, 0])
+        line2.set_ydata(force[:, 3])
+
+        for ax in axs:
+            ax.relim()
+            ax.autoscale_view()
+
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        plt.pause(0.01)
+        #=====================================================
+
+
+if __name__ == "__main__":
+    import sys
+    streamName = "stream_tactile"
+    if len(sys.argv) != 2 :
+        print("\n\nYou did not supply a stream name, assuming ",streamName) 
+    else:
+        streamName = sys.argv[1]
+
+    main(streamName)
+
