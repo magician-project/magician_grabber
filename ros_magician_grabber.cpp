@@ -116,6 +116,7 @@ class MagicianGrabber : public rclcpp::Node
     {
         //ATI Force Sensor 
         //--------------------------------------------------------------------------
+// geometry_msgs/msg/Wrench wrench 
         publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("fX", 10);
         publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("fY", 10);
         publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("fZ", 10);
