@@ -294,8 +294,8 @@ extern "C" int ros_force_callback(ATINetFTConfig *atinetft_config,double fX, dou
 {
     if (global_node) 
     {
-        global_node->update_Forces(fX, fY, fZ);
-        global_node->update_Torques(tX, tY, tZ);
+        //global_node->update_Forces(fX, fY, fZ);
+        //global_node->update_Torques(tX, tY, tZ);
         global_node->update_FT(fX,fY,fZ,tX,tY,tZ);
         return 1;
     }
@@ -345,6 +345,7 @@ int main(int argc, char **argv)
 
     // Modules available to use
     char interceptKeyboard = 0;
+    char fileOutput        = 0;
     char useRAM       = 0;
     char useArduino   = 0;
     char useTeensy    = 1;
@@ -360,7 +361,7 @@ int main(int argc, char **argv)
     // Grabber Configurations
     GlobalConfig cfg={0};
     setOutputDirectory(&cfg, "./");
-    noOutputDirectory(&cfg);
+    if (fileOutput==0) { noOutputDirectory(&cfg); }
     cfg.maxTimeToGrabForInSeconds = 0; //Grab for 30 seconds by default
 
     // Camera Default settings
@@ -378,6 +379,27 @@ int main(int argc, char **argv)
     char arduinoUseRoundLight[]    = {"r\n"};
     char arduinoUseDistanceLight[] = {"a\n"};
     char * arduinoExtraCommand = arduinoUseRoundLight; //0 Or Always set round lights on
+
+
+   if (fileOutput)
+  {
+   if (strcmp("./",cfg.outputDirectory)==0)
+   {
+     fprintf(stderr,"No Output Directory given will auto generate one! \n");
+     setOutputDirectoryFromTimestamp(&cfg);
+   }
+
+   if (cfg.useRAM)
+   {
+       snprintf(cfg.outputDirectoryOriginal,1024,"%s",cfg.outputDirectory);
+       int i = system("sudo mkdir tmpfs");
+       if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs directory to mount tmpfs \n" NORMAL); }
+
+       i = system("sudo mount -t tmpfs -o size=4G tmpfs tmpfs/");
+       if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs mount.. :(\n" NORMAL); return 1; }
+       snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
+   }
+  }
 
 
 
