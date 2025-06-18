@@ -306,7 +306,7 @@ extern "C" int ros_accelerometer_callback(ArduinoSerialConfig *arduino_config, u
 {
     if (global_node) 
     {
-        global_node->update_Accelerometer(accX, accY, accZ); 
+        //global_node->update_Accelerometer(accX, accY, accZ); 
         return 1;
     }
     return 0;
@@ -345,7 +345,7 @@ int main(int argc, char **argv)
 
     // Modules available to use
     char interceptKeyboard = 0;
-    char fileOutput        = 0;
+    char fileOutput        = 1;
     char useRAM       = 0;
     char useArduino   = 0;
     char useTeensy    = 1;
