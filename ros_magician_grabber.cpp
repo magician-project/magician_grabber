@@ -7,6 +7,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "geometry_msgs/msg/wrench_stamped.hpp"
+#include "geometry_msgs/msg/accel_stamped.hpp"
 
 //Regular imports
 #include <stdio.h>
@@ -32,7 +33,7 @@
 
 #include "performance.h"
 
-static const char MagicianROSGrabberVersion[]="0.0.0";
+static const char MagicianROSGrabberVersion[]="0.0.1";
 
 volatile sig_atomic_t stop = 0;
 
@@ -120,33 +121,36 @@ class MagicianGrabber : public rclcpp::Node
 // geometry_msgs/msg/Wrench wrench 
         publisherfXYZ_ = this->create_publisher<geometry_msgs::msg::WrenchStamped>("magician_grabber/wrench_sensed", 1);
 
-        publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("fX", 10);
-        publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("fY", 10);
-        publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("fZ", 10);
-        publishertX_ = this->create_publisher<std_msgs::msg::Float32>("tX", 10);
-        publishertY_ = this->create_publisher<std_msgs::msg::Float32>("tY", 10);
-        publishertZ_ = this->create_publisher<std_msgs::msg::Float32>("tZ", 10);
-
+/*
+        publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/fX", 10);
+        publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/fY", 10);
+        publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/fZ", 10);
+        publishertX_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/tX", 10);
+        publishertY_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/tY", 10);
+        publishertZ_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/tZ", 10);
+*/
         //Teensy Accelerometer 
         //--------------------------------------------------------------------------
-//https://docs.ros2.org/foxy/api/geometry_msgs/msg/AccelStamped.html
+        //https://docs.ros2.org/foxy/api/geometry_msgs/msg/AccelStamped.html
 
-        publisheraccX_ = this->create_publisher<std_msgs::msg::Float32>("accX", 10);
-        publisheraccY_ = this->create_publisher<std_msgs::msg::Float32>("accY", 10);
-        publisheraccZ_ = this->create_publisher<std_msgs::msg::Float32>("accZ", 10);
-
+        publisheraccXYZ_ = this->create_publisher<geometry_msgs::msg::AccelStamped>("magician_grabber/accel_sensed", 10);
+/*
+        publisheraccX_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/accX", 10);
+        publisheraccY_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/accY", 10);
+        publisheraccZ_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/accZ", 10);
+*/
         //Light Controller / Distance Sensors 
         //--------------------------------------------------------------------------
-        publisherButton_ = this->create_publisher<std_msgs::msg::Float32>("button", 10);
-        publisherD1_ = this->create_publisher<std_msgs::msg::Float32>("distance1", 10);
-        publisherD2_ = this->create_publisher<std_msgs::msg::Float32>("distance2", 10);
-        publisherD3_ = this->create_publisher<std_msgs::msg::Float32>("distance3", 10);
-        publisherL1_ = this->create_publisher<std_msgs::msg::Float32>("light1", 10);
-        publisherL2_ = this->create_publisher<std_msgs::msg::Float32>("light2", 10);
-        publisherL3_ = this->create_publisher<std_msgs::msg::Float32>("light3", 10);
-        publisherL4_ = this->create_publisher<std_msgs::msg::Float32>("light4", 10);
-        publisherL5_ = this->create_publisher<std_msgs::msg::Float32>("light5", 10);
-        publisherL6_ = this->create_publisher<std_msgs::msg::Float32>("light6", 10);
+        publisherButton_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/button", 10);
+        publisherD1_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/distance1", 10);
+        publisherD2_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/distance2", 10);
+        publisherD3_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/distance3", 10);
+        publisherL1_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light1", 10);
+        publisherL2_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light2", 10);
+        publisherL3_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light3", 10);
+        publisherL4_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light4", 10);
+        publisherL5_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light5", 10);
+        publisherL6_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light6", 10);
         
     }
 
@@ -165,6 +169,8 @@ class MagicianGrabber : public rclcpp::Node
 
     }
 
+
+/*
     void update_Forces(float fX, float fY, float fZ)
     {
         std_msgs::msg::Float32 msg1, msg2, msg3;
@@ -176,13 +182,7 @@ class MagicianGrabber : public rclcpp::Node
         publisherfY_->publish(msg2);
         publisherfZ_->publish(msg3);
 
-        //geometry_msgs::msg::WrenchStamped combined;
-        //combined.header.stamp = 0; //std::chrono.now();
-        //combined.wrench.force.x =fX;
-       // combined.wrench.force.y =fY;
-       // combined.wrench.force.z =fZ;
-
-            //RCLCPP_INFO(this->get_logger(), "Published Forces: %.2f, %.2f, %.2f", fX, fY, fZ);
+        //RCLCPP_INFO(this->get_logger(), "Published Forces: %.2f, %.2f, %.2f", fX, fY, fZ);
     }
 
     void update_Torques(float tX, float tY, float tZ)
@@ -198,10 +198,21 @@ class MagicianGrabber : public rclcpp::Node
 
         //RCLCPP_INFO(this->get_logger(), "Published Torques: %.2f, %.2f, %.2f", tX, tY, tZ);
     }
-
+*/
 
     void update_Accelerometer(float accX, float accY, float accZ)
     {
+        geometry_msgs::msg::AccelStamped combined;
+        combined.accel.x   = accX;
+        combined.accel.y   = accY;
+        combined.accel.z   = accZ;
+        combined.angular.x = 0.0;
+        combined.angular.y = 0.0;
+        combined.angular.z = 0.0;
+ 
+        publisheraccXYZ_->publish(combined);
+
+        /* 
         std_msgs::msg::Float32 msg1, msg2, msg3;
         msg1.data = accX;
         msg2.data = accY;
@@ -209,7 +220,7 @@ class MagicianGrabber : public rclcpp::Node
 
         publisheraccX_->publish(msg1);
         publisheraccY_->publish(msg2);
-        publisheraccZ_->publish(msg3);
+        publisheraccZ_->publish(msg3);*/
 
         //RCLCPP_INFO(this->get_logger(), "Published Accelerations: %.2f, %.2f, %.2f", accX, accY, accZ);
     }
@@ -265,12 +276,14 @@ class MagicianGrabber : public rclcpp::Node
 private:
     rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr publisherfXYZ_;
     
+/*
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfZ_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertZ_;
+*/
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccZ_;
