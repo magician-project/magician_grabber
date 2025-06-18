@@ -117,6 +117,8 @@ class MagicianGrabber : public rclcpp::Node
         //ATI Force Sensor 
         //--------------------------------------------------------------------------
 // geometry_msgs/msg/Wrench wrench 
+        publisherfX_ = this->create_publisher<geometry_msgs::msg::WrenchStamped>("magician_grabber/wrench_sensed", 1);
+
         publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("fX", 10);
         publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("fY", 10);
         publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("fZ", 10);
@@ -126,6 +128,8 @@ class MagicianGrabber : public rclcpp::Node
 
         //Teensy Accelerometer 
         //--------------------------------------------------------------------------
+//https://docs.ros2.org/foxy/api/geometry_msgs/msg/AccelStamped.html
+
         publisheraccX_ = this->create_publisher<std_msgs::msg::Float32>("accX", 10);
         publisheraccY_ = this->create_publisher<std_msgs::msg::Float32>("accY", 10);
         publisheraccZ_ = this->create_publisher<std_msgs::msg::Float32>("accZ", 10);
