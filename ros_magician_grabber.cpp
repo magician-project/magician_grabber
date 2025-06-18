@@ -154,12 +154,15 @@ class MagicianGrabber : public rclcpp::Node
     {
         geometry_msgs::msg::WrenchStamped combined;
         //combined.header.stamp = 0; //std::chrono.now();
+        combined.header.frame_id="ft_sensing_frame";
         combined.wrench.force.x =fX;
         combined.wrench.force.y =fY;
         combined.wrench.force.z =fZ;
         combined.wrench.torque.x =tX;
         combined.wrench.torque.y =tY;
         combined.wrench.torque.z =tZ;
+        publisherfXYZ_->publish(combined);
+
     }
 
     void update_Forces(float fX, float fY, float fZ)
@@ -341,7 +344,7 @@ int main(int argc, char **argv)
     unsigned char countdown    = 0;
 
     // Modules available to use
-    char interceptKeyboard = 1;
+    char interceptKeyboard = 0;
     char useRAM       = 0;
     char useArduino   = 0;
     char useTeensy    = 1;
