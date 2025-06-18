@@ -373,6 +373,7 @@ int main(int argc, char **argv)
 
     // Grabber Configurations
     GlobalConfig cfg={0};
+    cfg.useRAM = useRAM;
     setOutputDirectory(&cfg, "./");
     if (fileOutput==0) { noOutputDirectory(&cfg); }
     cfg.maxTimeToGrabForInSeconds = 0; //Grab for 30 seconds by default
@@ -394,13 +395,7 @@ int main(int argc, char **argv)
     char * arduinoExtraCommand = arduinoUseRoundLight; //0 Or Always set round lights on
 
 
-   if (fileOutput)
-  {
-   if (strcmp("./",cfg.outputDirectory)==0)
-   {
-     fprintf(stderr,"No Output Directory given will auto generate one! \n");
-     setOutputDirectoryFromTimestamp(&cfg);
-   }
+
 
    if (cfg.useRAM)
    {
@@ -410,10 +405,17 @@ int main(int argc, char **argv)
 
        i = system("sudo mount -t tmpfs -o size=4G tmpfs tmpfs/");
        if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs mount.. :(\n" NORMAL); return 1; }
-       snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
+       //snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
    }
   }
 
+   if (fileOutput)
+  {
+   if (strcmp("./",cfg.outputDirectory)==0)
+   {
+     fprintf(stderr,"No Output Directory given will auto generate one! \n");
+     setOutputDirectoryFromTimestamp(&cfg);
+   }
 
 
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)
@@ -521,7 +523,7 @@ int main(int argc, char **argv)
     unsigned long currentTime = startTime;
     printf("ROS Node started.\n");
     // Run until flag is cleared (placeholder for user signal handling)
-    while (keep_running)
+    while ((keep_running) && (stop==0))
     {
         rclcpp::spin(global_node);
     

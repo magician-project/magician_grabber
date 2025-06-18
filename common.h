@@ -287,7 +287,10 @@ static int setOutputDirectoryFromTimestamp(GlobalConfig *cfg)
     strftime(buffer, 20, "%Y-%m-%d-%H-%M-%S", timeinfo);
 
     char outDir[512]={0};
-    snprintf(outDir,512,"./%s-dur%lu",buffer,cfg->maxTimeToGrabForInSeconds);
+
+    if (cfg->useRAM)
+       { snprintf(outDir,512,"tmpfs/%s-dur%lu",buffer,cfg->maxTimeToGrabForInSeconds); } else
+       { snprintf(outDir,512,"./%s-dur%lu",buffer,cfg->maxTimeToGrabForInSeconds);     }
 
     return setOutputDirectory(cfg,outDir);
 }
