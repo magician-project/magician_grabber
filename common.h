@@ -59,6 +59,8 @@ typedef struct
     unsigned char countdown ;
 
     char speak;
+    char silent;
+    char unixtime;
     char manual_trigger_light;
 
     // Modules available to use
@@ -275,6 +277,8 @@ static int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
 }
 
 
+
+
 static int setOutputDirectoryFromTimestamp(GlobalConfig *cfg)
 {
     time_t rawtime;
@@ -287,11 +291,13 @@ static int setOutputDirectoryFromTimestamp(GlobalConfig *cfg)
     strftime(buffer, 20, "%Y-%m-%d-%H-%M-%S", timeinfo);
 
     char outDir[512]={0};
-    snprintf(outDir,512,"./%s-dur%lu",buffer,cfg->maxTimeToGrabForInSeconds);
+
+    if (cfg->useRAM)
+       { snprintf(outDir,512,"tmpfs/%s-dur%lu",buffer,cfg->maxTimeToGrabForInSeconds); } else
+       { snprintf(outDir,512,"./%s-dur%lu",buffer,cfg->maxTimeToGrabForInSeconds);     }
 
     return setOutputDirectory(cfg,outDir);
 }
-
 
 static int noOutputDirectory(GlobalConfig *cfg)
 {
@@ -337,6 +343,8 @@ static void print_help()
     printf("  --stream                  Stream camera data to shared memory (disables file output).\n");
     printf("  --scan                    Scan using Arduino and exit.\n");
     printf("  --help                    Show this help message and exit.\n");
+    printf("  --silent                  Don't produce progress messages.\n");
+    printf("  --unixtime                Use unix-time for timestamps.\n");
 }
 
 
@@ -358,6 +366,16 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
          print_help();
          exit(0);
         } else
+        if (strcmp(argv[i], "--silent") == 0)
+        {
+           fprintf(stderr,"Silencing terminal output\n");
+           cfg->silent = 1;
+        } else
+        if (strcmp(argv[i], "--unixtime") == 0)
+        {
+           fprintf(stderr,"Using unix time for timestamps\n");
+           cfg->unixtime = 1;
+        } else
         if (strcmp(argv[i], "--simulate") == 0)
         {
            cfg->simulate = 1;
@@ -368,6 +386,10 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
            cfg->useATIForce =1;
            #endif // TACTILE
            fprintf(stderr,"Simulating input\n");
+        } else
+        if (strcmp(argv[i],"--noarduino")==0)
+        {
+              cfg->useArduino = 0;
         } else
         if (strcmp(argv[i],"--arduino")==0)
         {

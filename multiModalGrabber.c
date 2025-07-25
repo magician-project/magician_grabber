@@ -204,8 +204,8 @@ int main (int argc, char **argv)
     pthread_t gigecamera_tid, arduino_tid, teensy_tid, atinetft_tid;
 
     // Initialize Configurations
-    //To debug aravis connection use : arv-camera-test-0.10  -d stream
-    ATINetFTConfig atinetft_config     = {&cfg, "192.168.200.11",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
+    //To debug aravis connection use : arv-camera-test-0.10  -d stream  "192.168.137.201"
+    ATINetFTConfig atinetft_config     = {&cfg, "127.0.0.1",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
     ArduinoSerialConfig teensy_config  = {&cfg, "copy from cfg later",    "tactile/accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0, NULL};
     ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, cfg.arduinoExtraCommand, 0, 0, 0.0, NULL};
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };
@@ -284,8 +284,9 @@ int main (int argc, char **argv)
 
 
     //Arduino takes some time to powerup
-    if (cfg.useArduino)  { pthread_create(&arduino_tid,    NULL, arduino_thread,    &arduino_config);  }
+    if (cfg.useArduino)  { fprintf(stderr,"Creating Arduino Thread\n"); pthread_create(&arduino_tid,    NULL, arduino_thread,    &arduino_config);  }
     if (cfg.useTeensy)   {
+                            fprintf(stderr,"Creating Teensy Thread\n");
                            /*
                               char *teensy_port = find_teensy_port();
                               if (teensy_port) { fprintf(stderr,GREEN "Teensy found on: %s\n" NORMAL, teensy_port); } else
@@ -337,6 +338,10 @@ int main (int argc, char **argv)
 
     unsigned long startTime = GetTickCountMicroseconds();
     unsigned long currentTime = startTime;
+
+    if (cfg.unixtime)
+          { startTime=0; }
+
     printf("Data collection started.\n");
     // Run until flag is cleared (placeholder for user signal handling)
     while (cfg.keep_running)
@@ -367,30 +372,33 @@ int main (int argc, char **argv)
         currentTime = GetTickCountMicroseconds();
         unsigned long runningTimeInSeconds = (currentTime - startTime) / 1000000;
 
-        printf("\r");
-        //-----------------------------------------------------------------------------------------------------------------
-        if (cfg.streamData)   { broadcasting(camera_config.framesCaptured); }
-        if (cfg.run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
+        if (!cfg.silent)
+        { //Terminal progress output
+         printf("\r");
+         //-----------------------------------------------------------------------------------------------------------------
+         if (cfg.streamData)   { broadcasting(camera_config.framesCaptured); }
+         if (cfg.run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
                           {
                            printf(GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
                            progress_bar(runningTimeInSeconds,cfg.maxTimeToGrabForInSeconds);
                           }
 
-        if (cfg.useCamera)
+         if (cfg.useCamera)
             {
              printf("|Cam %lu ",camera_config.framesCaptured);
              printHz(camera_config.actualFrameRate);
              printf(" Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
             }
 
-        if (cfg.useArduino)  { if (arduino_config.receivedDataFrames==0) {printf(RED);}
+         if (cfg.useArduino)  { if (arduino_config.receivedDataFrames==0) {printf(RED);}
                                printf("|Arduino "); printHz(arduino_config.Hz); printf(NORMAL); }
-        if (cfg.useTeensy)   { if (teensy_config.receivedDataFrames==0) {printf(RED);}
+         if (cfg.useTeensy)   { if (teensy_config.receivedDataFrames==0) {printf(RED);}
                                printf("|Teensy ");  printHz(teensy_config.Hz); printf(NORMAL); }
-        if (cfg.useATIForce) { if (atinetft_config.receivedDataFrames==0) {printf(RED);}
+         if (cfg.useATIForce) { if (atinetft_config.receivedDataFrames==0) {printf(RED);}
                                printf("|ATI ");     printHz(atinetft_config.Hz); printf(NORMAL); }
-        //-----------------------------------------------------------------------------------------------------------------
-        printf("|   \r");
+         //-----------------------------------------------------------------------------------------------------------------
+         printf("|   \r");
+        }
 
         if ( (!cfg.run_forever) && (currentTime-startTime > cfg.maxTimeToGrabForInSeconds * 1000000) )
         {
