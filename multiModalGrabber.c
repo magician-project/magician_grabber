@@ -204,8 +204,8 @@ int main (int argc, char **argv)
     pthread_t gigecamera_tid, arduino_tid, teensy_tid, atinetft_tid;
 
     // Initialize Configurations
-    //To debug aravis connection use : arv-camera-test-0.10  -d stream  "192.168.137.201"
-    ATINetFTConfig atinetft_config     = {&cfg, "127.0.0.1",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
+    //To debug aravis connection use : arv-camera-test-0.10  -d stream
+    ATINetFTConfig atinetft_config     = {&cfg, "192.168.137.201",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
     ArduinoSerialConfig teensy_config  = {&cfg, "copy from cfg later",    "tactile/accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0, NULL};
     ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, cfg.arduinoExtraCommand, 0, 0, 0.0, NULL};
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };

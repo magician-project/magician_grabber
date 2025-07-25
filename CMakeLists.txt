@@ -18,6 +18,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--copy-dt-needed-entries -O2 -fPIC -
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
  
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ARAVIS REQUIRED aravis-0.10)
@@ -39,7 +40,7 @@ tactile_processor/TactileProcessor.cpp
 )
 
 add_executable(magician_grabber ${SRC} ) #${TACTILE_SRC} 
-ament_target_dependencies(magician_grabber rclcpp std_msgs)
+ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)
 
 #target_compile_definitions(magician_grabber PRIVATE TACTILE TACTILE_LIBRARY)
 target_include_directories(magician_grabber PRIVATE ${ARAVIS_INCLUDE_DIRS})
@@ -53,10 +54,10 @@ target_link_libraries(magician_grabber ${ARAVIS_LIBRARIES} pthread m) #fftw3
 #target_compile_options(SharedMemoryVideoBuffers PRIVATE -Wall -pthread -g)
 #target_link_libraries(SharedMemoryVideoBuffers PRIVATE pthread m rt) 
 
-set_target_properties(SharedMemoryVideoBuffers PROPERTIES
-  OUTPUT_NAME SharedMemoryVideoBuffers
-  POSITION_INDEPENDENT_CODE ON
-)
+#set_target_properties(SharedMemoryVideoBuffers PROPERTIES
+#  OUTPUT_NAME SharedMemoryVideoBuffers
+#  POSITION_INDEPENDENT_CODE ON
+#)
 
 
 install(TARGETS

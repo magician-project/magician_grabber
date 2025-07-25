@@ -6,7 +6,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float32.hpp"
-
+#include "geometry_msgs/msg/wrench_stamped.hpp"
+#include "geometry_msgs/msg/accel_stamped.hpp"
 
 //Regular imports
 #include <stdio.h>
@@ -32,7 +33,7 @@
 
 #include "performance.h"
 
-static const char MagicianROSGrabberVersion[]="0.0.0";
+static const char MagicianROSGrabberVersion[]="0.0.1";
 
 volatile sig_atomic_t stop = 0;
 
@@ -48,7 +49,7 @@ void handle_sigint(int sig)
     }
 }
 
-
+/*
 int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
 {
     if (cfg==0) { return 0; }
@@ -78,15 +79,16 @@ int setOutputDirectory(GlobalConfig *cfg, const char * outputDirectory)
                 }
     }
     return 1;
-}
+}*/
 
+/*
 int noOutputDirectory(GlobalConfig *cfg)
 {
   if (cfg==0) { return 0; }
 
   setOutputDirectory(cfg,"/dev/null");
   return 1;
-}
+}*/
 
 int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 {
@@ -116,34 +118,59 @@ class MagicianGrabber : public rclcpp::Node
     {
         //ATI Force Sensor 
         //--------------------------------------------------------------------------
-        publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("fX", 10);
-        publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("fY", 10);
-        publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("fZ", 10);
-        publishertX_ = this->create_publisher<std_msgs::msg::Float32>("tX", 10);
-        publishertY_ = this->create_publisher<std_msgs::msg::Float32>("tY", 10);
-        publishertZ_ = this->create_publisher<std_msgs::msg::Float32>("tZ", 10);
+// geometry_msgs/msg/Wrench wrench 
+        publisherfXYZ_ = this->create_publisher<geometry_msgs::msg::WrenchStamped>("magician_grabber/wrench_sensed", 1);
 
+/*
+        publisherfX_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/fX", 10);
+        publisherfY_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/fY", 10);
+        publisherfZ_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/fZ", 10);
+        publishertX_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/tX", 10);
+        publishertY_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/tY", 10);
+        publishertZ_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/tZ", 10);
+*/
         //Teensy Accelerometer 
         //--------------------------------------------------------------------------
-        publisheraccX_ = this->create_publisher<std_msgs::msg::Float32>("accX", 10);
-        publisheraccY_ = this->create_publisher<std_msgs::msg::Float32>("accY", 10);
-        publisheraccZ_ = this->create_publisher<std_msgs::msg::Float32>("accZ", 10);
+        //https://docs.ros2.org/foxy/api/geometry_msgs/msg/AccelStamped.html
 
+        publisheraccXYZ_ = this->create_publisher<geometry_msgs::msg::AccelStamped>("magician_grabber/accel_sensed", 10);
+/*
+        publisheraccX_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/accX", 10);
+        publisheraccY_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/accY", 10);
+        publisheraccZ_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/accZ", 10);
+*/
         //Light Controller / Distance Sensors 
         //--------------------------------------------------------------------------
-        publisherButton_ = this->create_publisher<std_msgs::msg::Float32>("button", 10);
-        publisherD1_ = this->create_publisher<std_msgs::msg::Float32>("distance1", 10);
-        publisherD2_ = this->create_publisher<std_msgs::msg::Float32>("distance2", 10);
-        publisherD3_ = this->create_publisher<std_msgs::msg::Float32>("distance3", 10);
-        publisherL1_ = this->create_publisher<std_msgs::msg::Float32>("light1", 10);
-        publisherL2_ = this->create_publisher<std_msgs::msg::Float32>("light2", 10);
-        publisherL3_ = this->create_publisher<std_msgs::msg::Float32>("light3", 10);
-        publisherL4_ = this->create_publisher<std_msgs::msg::Float32>("light4", 10);
-        publisherL5_ = this->create_publisher<std_msgs::msg::Float32>("light5", 10);
-        publisherL6_ = this->create_publisher<std_msgs::msg::Float32>("light6", 10);
+        publisherButton_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/button", 10);
+        publisherD1_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/distance1", 10);
+        publisherD2_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/distance2", 10);
+        publisherD3_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/distance3", 10);
+        publisherL1_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light1", 10);
+        publisherL2_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light2", 10);
+        publisherL3_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light3", 10);
+        publisherL4_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light4", 10);
+        publisherL5_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light5", 10);
+        publisherL6_ = this->create_publisher<std_msgs::msg::Float32>("magician_grabber/light6", 10);
         
     }
 
+    void update_FT(float fX,float fY, float fZ , float tX , float tY, float tZ)
+    {
+        geometry_msgs::msg::WrenchStamped combined;
+        //combined.header.stamp = 0; //std::chrono.now();
+        combined.header.frame_id="ft_sensing_frame";
+        combined.wrench.force.x =fX;
+        combined.wrench.force.y =fY;
+        combined.wrench.force.z =fZ;
+        combined.wrench.torque.x =tX;
+        combined.wrench.torque.y =tY;
+        combined.wrench.torque.z =tZ;
+        publisherfXYZ_->publish(combined);
+
+    }
+
+
+/*
     void update_Forces(float fX, float fY, float fZ)
     {
         std_msgs::msg::Float32 msg1, msg2, msg3;
@@ -171,10 +198,21 @@ class MagicianGrabber : public rclcpp::Node
 
         //RCLCPP_INFO(this->get_logger(), "Published Torques: %.2f, %.2f, %.2f", tX, tY, tZ);
     }
-
+*/
 
     void update_Accelerometer(float accX, float accY, float accZ)
     {
+        geometry_msgs::msg::AccelStamped combined;
+        combined.accel.x   = accX;
+        combined.accel.y   = accY;
+        combined.accel.z   = accZ;
+        combined.angular.x = 0.0;
+        combined.angular.y = 0.0;
+        combined.angular.z = 0.0;
+ 
+        publisheraccXYZ_->publish(combined);
+
+        /* 
         std_msgs::msg::Float32 msg1, msg2, msg3;
         msg1.data = accX;
         msg2.data = accY;
@@ -182,7 +220,7 @@ class MagicianGrabber : public rclcpp::Node
 
         publisheraccX_->publish(msg1);
         publisheraccY_->publish(msg2);
-        publisheraccZ_->publish(msg3);
+        publisheraccZ_->publish(msg3);*/
 
         //RCLCPP_INFO(this->get_logger(), "Published Accelerations: %.2f, %.2f, %.2f", accX, accY, accZ);
     }
@@ -236,12 +274,16 @@ class MagicianGrabber : public rclcpp::Node
 
 
 private:
+    rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr publisherfXYZ_;
+    
+/*
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfZ_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertZ_;
+*/
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccZ_;
@@ -265,8 +307,9 @@ extern "C" int ros_force_callback(ATINetFTConfig *atinetft_config,double fX, dou
 {
     if (global_node) 
     {
-        global_node->update_Forces(fX, fY, fZ);
-        global_node->update_Torques(tX, tY, tZ);
+        //global_node->update_Forces(fX, fY, fZ);
+        //global_node->update_Torques(tX, tY, tZ);
+        global_node->update_FT(fX,fY,fZ,tX,tY,tZ);
         return 1;
     }
     return 0;
@@ -276,7 +319,7 @@ extern "C" int ros_accelerometer_callback(ArduinoSerialConfig *arduino_config, u
 {
     if (global_node) 
     {
-        global_node->update_Accelerometer(accX, accY, accZ); 
+        //global_node->update_Accelerometer(accX, accY, accZ); 
         return 1;
     }
     return 0;
@@ -314,13 +357,14 @@ int main(int argc, char **argv)
     unsigned char countdown    = 0;
 
     // Modules available to use
-    char interceptKeyboard = 1;
+    char interceptKeyboard = 0;
+    char fileOutput        = 1;
     char useRAM       = 0;
-    char useArduino   = 1;
+    char useArduino   = 0;
     char useTeensy    = 1;
-    char useCamera    = 1;
+    char useCamera    = 0;
     char useATIForce  = 1;
-    char streamCamera = 1;
+    char streamCamera = 0;
 
     #if TACTILE
     char calculateTactileFeatures    = 0;
@@ -329,8 +373,9 @@ int main(int argc, char **argv)
 
     // Grabber Configurations
     GlobalConfig cfg={0};
+    cfg.useRAM = useRAM;
     setOutputDirectory(&cfg, "./");
-    noOutputDirectory(&cfg);
+    if (fileOutput==0) { noOutputDirectory(&cfg); }
     cfg.maxTimeToGrabForInSeconds = 0; //Grab for 30 seconds by default
 
     // Camera Default settings
@@ -351,6 +396,28 @@ int main(int argc, char **argv)
 
 
 
+
+   if (cfg.useRAM)
+   {
+       snprintf(cfg.outputDirectoryOriginal,1024,"%s",cfg.outputDirectory);
+       int i = system("sudo mkdir tmpfs");
+       if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs directory to mount tmpfs \n" NORMAL); }
+
+       i = system("sudo mount -t tmpfs -o size=4G tmpfs tmpfs/");
+       if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs mount.. :(\n" NORMAL); return 1; }
+       //snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
+   }
+  }
+
+   if (fileOutput)
+  {
+   if (strcmp("./",cfg.outputDirectory)==0)
+   {
+     fprintf(stderr,"No Output Directory given will auto generate one! \n");
+     setOutputDirectoryFromTimestamp(&cfg);
+   }
+
+
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)
     unsigned long acquisitionStartTime = GetTickCountMicroseconds();
 
@@ -360,9 +427,9 @@ int main(int argc, char **argv)
     // Initialize Configurations
     //To debug aravis connection use : arv-camera-test-0.10  -d stream
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", width, height, exposure, gain, blackLevel, frameRate, 0, NULL, &keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL };
-    ATINetFTConfig atinetft_config     = {&cfg, "192.168.200.11",  49152, "force.csv",  NULL, &keep_running,0 , 0, 0, 0.0, (void*) ros_force_callback};
-    ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM1",    "accelerometer.csv", 115200, NULL, &keep_running, 0, NULL , 0, 0, 0.0,(void*)  ros_accelerometer_callback};
-    ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyACM0",    "controller.csv",    115200, NULL, &keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};
+    ATINetFTConfig atinetft_config     = {&cfg, "192.168.137.201",  49152, "force.csv",  NULL, &keep_running,0 , 0, 0, 0.0, (void*) ros_force_callback};
+    ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM0",    "accelerometer.csv", 115200, NULL, &keep_running, 0, NULL , 0, 0, 0.0,(void*)  ros_accelerometer_callback};
+    ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyUSB0",    "controller.csv",    115200, NULL, &keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};
 
 
     //Try to make arduino wake up correctly
@@ -456,7 +523,7 @@ int main(int argc, char **argv)
     unsigned long currentTime = startTime;
     printf("ROS Node started.\n");
     // Run until flag is cleared (placeholder for user signal handling)
-    while (keep_running)
+    while ((keep_running) && (stop==0))
     {
         rclcpp::spin(global_node);
     

@@ -8,7 +8,7 @@ from SharedMemoryManager import SharedMemoryManager
 
 def main(streamName): 
 
-    WINDOW = 4000
+    WINDOW = 4000 #ONLY MICHELE CHANGES THIS!!!
  
     #=====================================================
     # Set up interactive plotting
@@ -42,49 +42,6 @@ def main(streamName):
         frame = np.frombuffer(frameRaw, dtype=np.float32)
         #Frame is bytes it should be cast as float32
 
-        """
-         =====================================================
-         acceleration_psd.csv  2 values per measurement
-         acceleration_spikeness.csv 2 values per measurement
-         accelerometer.csv  4 values per measurement
-         force.csv 2 values per measurement
-         =====================================================
-         force_psd.csv  4 values per measurement
-         friction.csv 2 values per measurement
-         =====================================================
-         WINDOW = 4000
-        """
-
-        """
-        #=====================================================================
-        frameStart = 0
-        frameEnd   = WINDOW*2
-        friction = frame[frameStart:frameEnd].reshape(-1, 2)
-        print("friction shape:", friction.shape)
-        print("friction :",friction)
-        #=====================================================================
-        frameStart = frameEnd
-        frameEnd   = frameStart + WINDOW*2
-        acceleration_spikeness = frame[frameStart:frameEnd].reshape(-1, 2)
-        print("acceleration_spikeness shape:", acceleration_spikeness.shape) 
-        print("acceleration_spikeness :",acceleration_spikeness)
-        #=====================================================================
-        frameStart = frameEnd
-        frameEnd   = frameStart + WINDOW*2
-        acceleration_psd = frame[frameStart:frameEnd].reshape(-1, 2)
-        print("acceleration_psd shape:", acceleration_psd.shape) 
-        print("acceleration_psd :", acceleration_psd)
-        #=====================================================================
-        frameStart = frameEnd
-        frameEnd   = frameStart + WINDOW*2
-        force_psd = frame[frameStart:frameEnd].reshape(-1, 2)
-        print("force_psd shape:", force_psd.shape) 
-        print("force_psd :", force_psd) 
-        #=====================================================================
-        """
-
-
-
         #=====================================================================
         frameStart = 0
         frameEnd   = WINDOW*4
@@ -100,6 +57,7 @@ def main(streamName):
         #=====================================================================
         print("Data :",frame)
 
+       # CALL PIPPLE(force,acceleration)
 
         # Plot the first channel of each for simplicity
         #=====================================================
