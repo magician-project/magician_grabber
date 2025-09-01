@@ -6,7 +6,7 @@
 
 ## Compilation / Dependencies:
 
-Building the Grabber and getting its dependencies is very easy, just issue:
+Building the Grabber and getting its dependencies is [very easy](https://github.com/magician-project/magician_grabber/blob/main/scripts/build.sh), just issue:
 ```
 scripts/build.sh
 ```
