@@ -57,11 +57,51 @@ Command	Description:
 
 ## Usage:
 
-The full list of commands can be given by executing 
+The full list of commands is :
+
+| Option                    | Description                                                     |
+| ------------------------- | --------------------------------------------------------------- |
+| `--simulate`              | Simulate devices (development).                                 |
+| `-o, --output <path>`     | Set the output directory.                                       |
+| `--arduino <path>`        | Set the path to Arduino (default: `/dev/ttyACM0`).              |
+| `--teensy <path>`         | Set the path to Teensy (default: `/dev/ttyACM1`).               |
+| `--nooutput`              | Disable file output (redirect to `/dev/null`).                  |
+| `--countdown <seconds>`   | Perform a countdown before starting.                            |
+| `--view`                  | Use experimental Viewer.                                                     |
+| `--ram`                   | Store data in RAM (recommended for high FPS).                   |
+| `--trigger`               | Manually trigger light change after each captured frame.        |
+| `--notrigger`             | Do not manually trigger light change after each captured frame. |
+| `--size <width> <height>` | Set the camera resolution in pixels.                            |
+| `--exposure <microsec>`   | Set camera exposure time in microseconds.                       |
+| `--gain <value>`          | Set camera gain.                                                |
+| `--fps <Hz>`              | Set camera frame rate (use `--ram` for FPS > 10).               |
+| `--blacklevel <value>`    | Set camera black level.                                         |
+| `--duration <seconds>`    | Set the maximum time for frame grabbing.                        |
+| `--time <seconds>`        | Alias for `--duration`.                                         |
+| `--forever`               | Run indefinitely.                                               |
+| `--camera`                | Enable the camera.                                              |
+| `--force`                 | Enable force sensor.                                            |
+| `--features`              | Enable force sensor features calculation.                       |
+| `--accelerometer`         | Enable accelerometer (Teensy device).                           |
+| `--distance`              | Enable distance sensor (Arduino device).                        |
+| `--dlight`                | Use lighting based on distance sensor.                          |
+| `--rlight`                | Use round-robin lighting.                                       |
+| `--tlight`                | Use patterned lighting.                                         |
+| `--speak`                 | Enable TTS (text-to-speech).                                    |
+| `--rt`                    | Set real-time priority (requires privileges).                   |
+| `--all`                   | Enable all available devices.                                   |
+| `--stream`                | Stream camera data to shared memory (disables file output).     |
+| `--scan`                  | Scan using Arduino and exit.                                    |
+| `--help`                  | Show this help message and exit.                                |
+| `--silent`                | Suppress progress messages.                                     |
+| `--unixtime`              | Use Unix time for timestamps.                                   |
+
+
+
+This list can also be provided by executing 
 ```
 ./magician_grabber --help
-```
-or by looking at the [source code](https://github.com/magician-project/magician_grabber/blob/main/common.h#L312)
+``` 
 
 Of course instead of magician_grabber or magician_grabber_tactile binaries you can run the colcon generated rclcpp_magician_grabber binary depending on your needs.
 
