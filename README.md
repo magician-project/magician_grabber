@@ -18,8 +18,9 @@ make
 ```
 
 
-The most complex dependency of the grabber is [ARAVIS](https://github.com/AravisProject/aravis) for the GiGE camera
-If you want to manually install it (not use the [build.sh](https://github.com/magician-project/magician_grabber/blob/main/scripts/build.sh#L57)) you can do the following
+The most complex dependency of the grabber is [ARAVIS](https://github.com/AravisProject/aravis) for the GiGE camera.
+
+To manually install it (if you dont want to use the [build.sh](https://github.com/magician-project/magician_grabber/blob/main/scripts/build.sh#L57)) you can do the following:
 
 
 
