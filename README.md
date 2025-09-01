@@ -34,14 +34,15 @@ sudo ninja install
 ```
 
 
-## Using Magician Grabber as a ROS package:
+## Using Magician Grabber with or without ROS:
 
-After including the magician_grabber folder to the ROS2 workspace and running the scripts/build.sh script that
-gets all dependencies, the grabber can be compiled regularly along the other ROS packages using colcon build!
 
-Instead of using the magician_grabber or magician_grabber_tactile binaries that don't have ROS, when needing ROS you can use the rclcpp_magician_grabber binary
-supplying it with the same command line parameters as the other binaries. It should work exactly the same way as the standalone magician_grabber binaries, but also include
-the broadcast of the required ROS topics and messages [as seen here.](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122)
+After running the scripts/build.sh script mentioned above that gets all dependencies and building ros-free binaries the grabber can be also compiled with ROS2 support.
+To do so the magician_grabber folder should be placed on the ROS2 workspace and the grabber can be compiled regularly along the other ROS packages using colcon build!
+
+Instead of using the magician_grabber or magician_grabber_tactile binaries that are not linked to ROS2, if you want ROS2 support you can just execute the rclcpp_magician_grabber binary
+supplying it with the same command line parameters as you would to the other binaries. It should work exactly the same way as the standalone magician_grabber binaries, but also include
+the broadcast of the required ROS topics and messages [as seen here](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122).
 
 
 
@@ -51,6 +52,8 @@ The full list of commands can be given by executing
 ```
 ./magician_grabber --help
 ```
+
+Of course instead of magician_grabber or magician_grabber_tactile binaries you can run the colcon generated rclcpp_magician_grabber binary.
 
 Or by looking at the [source code](https://github.com/magician-project/magician_grabber/blob/main/common.h#L312)
 
