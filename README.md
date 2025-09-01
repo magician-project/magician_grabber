@@ -33,7 +33,7 @@ sudo ninja install
 ```
 
 
-## Using Magician Grabber with or without ROS:
+## Using the Magician Grabber with or without ROS:
 
 
 After running the scripts/build.sh script mentioned above that gets all dependencies and building ros-free binaries the grabber can be also compiled with ROS2 support.
