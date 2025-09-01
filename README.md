@@ -52,10 +52,10 @@ The full list of commands can be given by executing
 ```
 ./magician_grabber --help
 ```
+or by looking at the [source code](https://github.com/magician-project/magician_grabber/blob/main/common.h#L312)
 
-Of course instead of magician_grabber or magician_grabber_tactile binaries you can run the colcon generated rclcpp_magician_grabber binary.
+Of course instead of magician_grabber or magician_grabber_tactile binaries you can run the colcon generated rclcpp_magician_grabber binary depending on your needs.
 
-Or by looking at the [source code](https://github.com/magician-project/magician_grabber/blob/main/common.h#L312)
 
 Using the Grabber is very easy:
 ```
