@@ -65,7 +65,7 @@ E.g.:
 ```
 
 
-The full list of accepted commands is :
+The full list of accepted parameters is :
 
 | Option                    | Description                                                     |
 | ------------------------- | --------------------------------------------------------------- |
