@@ -1,6 +1,6 @@
 # Magician Unified Data Grabber
 
-<img src="https://github.com/magician-project/magician_grabber/blob/main/doc/logo.jpg?raw=true" height=200/> <img src="https://github.com/magician-project/magician_grabber/blob/main/doc/grabber.png?raw=true"height=200/>
+<img src="https://github.com/magician-project/magician_grabber/blob/main/doc/logo.jpg?raw=true" height=200/> <img src="https://github.com/magician-project/magician_grabber/blob/main/doc/grabber.png?raw=true" height=200/>
 
 
 
@@ -56,7 +56,16 @@ Command	Description:
 
 ## Usage:
 
-The full list of commands is :
+Configuration of the grabber happens through command line parameters. 
+
+E.g.:
+
+```
+./magician_grabber parameter1 parameter2 ... parameterN
+```
+
+
+The full list of accepted commands is :
 
 | Option                    | Description                                                     |
 | ------------------------- | --------------------------------------------------------------- |
@@ -97,7 +106,7 @@ The full list of commands is :
 
 
 
-This list can also be provided by executing 
+This list of accepted commands can also be provided by executing 
 ```
 ./magician_grabber --help
 ``` 
