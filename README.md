@@ -46,6 +46,15 @@ the broadcast of the required ROS topics and messages [as seen here](https://git
 
 
 
+Command	Description:
+
+| Binary                      | Compile Using       | Description |
+|-----------------------------|---------------------|-----------------------|
+| magician_grabber            | make                | Grabber  |
+| magician_grabber_tactile    | make                | Grabber + real-time computation of [tactile features](https://github.com/magician-project/magician_grabber/tree/main/tactile_processor) |
+| rclcpp_magician_grabber     | colcon              | Grabber + [ROS2 publishing](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122) |
+
+
 ## Usage:
 
 The full list of commands can be given by executing 
