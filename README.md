@@ -36,12 +36,13 @@ sudo ninja install
 ## Using the Magician Grabber with or without ROS:
 
 
-After running the scripts/build.sh script mentioned above that gets all dependencies and building ros-free binaries the grabber can be also compiled with ROS2 support.
-To do so the magician_grabber folder should be placed on the ROS2 workspace and the grabber can be compiled regularly along the other ROS packages using colcon build!
+After running the scripts/build.sh script mentioned above that gets all dependencies and building the ros-free magician_grabber and magician_grabber_tactile binaries, the grabber can be also compiled including ROS2 support.
+To do so the whole magician_grabber folder should be placed on the ROS2 workspace as a ROS package and the grabber can be compiled regularly along the other ROS packages using colcon build!
 
-Instead of using the magician_grabber or magician_grabber_tactile binaries that are not linked to ROS2, if you want ROS2 support you can just execute the rclcpp_magician_grabber binary
-supplying it with the same command line parameters as you would to the other binaries. It should work exactly the same way as the standalone magician_grabber binaries, but also include
+Instead of using the magician_grabber or magician_grabber_tactile binaries that are not linked to ROS2, if you want ROS2 support you must execute the rclcpp_magician_grabber binary.
+It also needs to be supplied with the same command line parameters as you would to the other binaries. It should work exactly the same way as the standalone magician_grabber binaries, but also include
 the broadcast of the required ROS topics and messages [as seen here](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122).
+The [default initialization of the ROS2 package](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L356) is a little different than the vanilla binaries to make it easier to invoke it
 
 
 
@@ -71,8 +72,8 @@ The full list of accepted parameters is :
 | ------------------------- | --------------------------------------------------------------- |
 | `--simulate`              | Simulate devices (development).                                 |
 | `-o, --output <path>`     | Set the output directory.                                       |
-| `--arduino <path>`        | Set the path to Arduino (default: `/dev/ttyACM0`).              |
-| `--teensy <path>`         | Set the path to Teensy (default: `/dev/ttyACM1`).               |
+| `--arduino <path>`        | Set the path to Arduino (default: `/dev/ttyUSB0`).              |
+| `--teensy <path>`         | Set the path to Teensy (default: `/dev/ttyACM0`).               |
 | `--nooutput`              | Disable file output (redirect to `/dev/null`).                  |
 | `--countdown <seconds>`   | Perform a countdown before starting.                            |
 | `--view`                  | Use experimental Viewer.                                                     |
@@ -106,7 +107,7 @@ The full list of accepted parameters is :
 
 
 
-This list of accepted commands can also be provided by executing 
+This list of accepted commands can also be provided by executing:
 ```
 ./magician_grabber --help
 ``` 
