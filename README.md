@@ -48,7 +48,7 @@ the broadcast of the required ROS topics and messages [as seen here](https://git
 
 Command	Description:
 
-| Binary                      | Compile Using       | Description |
+| Binary                      | Compiled via        | Description |
 |-----------------------------|---------------------|-----------------------|
 | magician_grabber            | make                | Grabber  |
 | magician_grabber_tactile    | make                | Grabber + real-time computation of [tactile features](https://github.com/magician-project/magician_grabber/tree/main/tactile_processor) |
