@@ -41,7 +41,7 @@ gets all dependencies, the grabber can be compiled regularly along the other ROS
 
 Instead of using the magician_grabber or magician_grabber_tactile binaries that don't have ROS, when needing ROS you can use the rclcpp_magician_grabber binary
 supplying it with the same command line parameters as the other binaries. It should work exactly the same way as the standalone magician_grabber binaries, but also include
-the broadcast of the required ROS topics and messages [as seen here](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122)
+the broadcast of the required ROS topics and messages [as seen here.](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122)
 
 
 
