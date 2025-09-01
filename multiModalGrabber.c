@@ -264,8 +264,18 @@ int main (int argc, char **argv)
     #endif // TACTILE
 
 
-    StreamingContext * streaming_context=0;
+    if (cfg.useCamera)
+    {
+      fprintf(stderr,"Configuring camera exposure pins..\n");
+      int i=system("arv-tool-0.10 control LineSelector=Line3 LineMode=Output LineSource=ExposureActive LineInverter=0");
+      if (i!=0)
+                           {
+                               fprintf(stderr,"Failed setting Aravis Camera Exposure pins, halting to protect LED COBs\n");
+                               abort();
+                           }
+    }
 
+    StreamingContext * streaming_context=0;
     if ( (cfg.streamData) && (cfg.useCamera) )
                          {
                            fprintf(stderr,"Starting Camera Stream..\n");
