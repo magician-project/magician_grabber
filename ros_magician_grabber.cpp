@@ -157,6 +157,7 @@ class MagicianGrabber : public rclcpp::Node
     void update_FT(float fX,float fY, float fZ , float tX , float tY, float tZ)
     {
         geometry_msgs::msg::WrenchStamped combined;
+        combined.header.stamp = get_clock()->now();
         //combined.header.stamp = 0; //std::chrono.now();
         combined.header.frame_id="ft_sensing_frame";
         combined.wrench.force.x =fX;
@@ -203,12 +204,13 @@ class MagicianGrabber : public rclcpp::Node
     void update_Accelerometer(float accX, float accY, float accZ)
     {
         geometry_msgs::msg::AccelStamped combined;
-        combined.accel.x   = accX;
-        combined.accel.y   = accY;
-        combined.accel.z   = accZ;
-        combined.angular.x = 0.0;
-        combined.angular.y = 0.0;
-        combined.angular.z = 0.0;
+        combined.header.stamp = get_clock()->now();
+        combined.accel.linear.x   = accX;
+        combined.accel.linear.y   = accY;
+        combined.accel.linear.z   = accZ;
+        combined.accel.angular.x = 0.0;
+        combined.accel.angular.y = 0.0;
+        combined.accel.angular.z = 0.0;
  
         publisheraccXYZ_->publish(combined);
 
@@ -274,8 +276,11 @@ class MagicianGrabber : public rclcpp::Node
 
 
 private:
-    rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr publisherfXYZ_;
     
+    rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr publisherfXYZ_;
+    rclcpp::Publisher<geometry_msgs::msg::AccelStamped>::SharedPtr publisheraccXYZ_;
+
+/*
 /*
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfY_;
@@ -283,10 +288,11 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publishertZ_;
-*/
+
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccY_;
-    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccZ_;
+    rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisheraccZ_;*/
+
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherButton_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherD1_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherD2_;
@@ -319,7 +325,7 @@ extern "C" int ros_accelerometer_callback(ArduinoSerialConfig *arduino_config, u
 {
     if (global_node) 
     {
-        //global_node->update_Accelerometer(accX, accY, accZ); 
+        global_node->update_Accelerometer(accX, accY, accZ); 
         return 1;
     }
     return 0;
@@ -407,15 +413,16 @@ int main(int argc, char **argv)
        if (i!=0)  { fprintf(stderr,RED "Failed creating a tmpfs mount.. :(\n" NORMAL); return 1; }
        //snprintf(cfg.outputDirectory,1024,"%s","tmpfs/");
    }
-  }
+  
 
    if (fileOutput)
-  {
-   if (strcmp("./",cfg.outputDirectory)==0)
    {
-     fprintf(stderr,"No Output Directory given will auto generate one! \n");
-     setOutputDirectoryFromTimestamp(&cfg);
-   }
+        if (strcmp("./",cfg.outputDirectory)==0)
+        {
+            fprintf(stderr,"No Output Directory given will auto generate one! \n");
+            setOutputDirectoryFromTimestamp(&cfg);
+        }
+    }
 
 
     //Record time that acquisition started (this will be considered as timestamp 0 from now on)

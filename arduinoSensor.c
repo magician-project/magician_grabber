@@ -139,13 +139,13 @@ int serialport_init(const char* serialport, int baud)
     flags |= TIOCM_RTS;  // Set RTS
     ioctl(fd, TIOCMSET, &flags);
 
-    usleep(100000); // Small delay
+    //usleep(100000); // Small delay
 
     flags &= ~TIOCM_DTR;  // Clear DTR
     flags &= ~TIOCM_RTS;  // Clear RTS
     ioctl(fd, TIOCMSET, &flags);
 
-    usleep(2000000);  // Allow 2 sec Arduino to reset
+    //usleep(2000000);  // Allow 2 sec Arduino to reset
     //---------------------------------------------------
 
     return fd;
