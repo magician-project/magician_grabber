@@ -139,13 +139,13 @@ int serialport_init(const char* serialport, int baud)
     flags |= TIOCM_RTS;  // Set RTS
     ioctl(fd, TIOCMSET, &flags);
 
-    //usleep(100000); // Small delay
+    //usleep(100000); // Small delay //Removed 30/7/2025 Michele's fix to align timestamps properly
 
     flags &= ~TIOCM_DTR;  // Clear DTR
     flags &= ~TIOCM_RTS;  // Clear RTS
     ioctl(fd, TIOCMSET, &flags);
 
-    //usleep(2000000);  // Allow 2 sec Arduino to reset
+    //usleep(2000000);  // Allow 2 sec Arduino to reset //Removed 30/7/2025 Michele's fix to align timestamps properly
     //---------------------------------------------------
 
     return fd;
@@ -322,6 +322,7 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
     unsigned long dev_timestamp=0;
 
     int Button1;
+    int Button2;
     int Distance1;
     int Distance2;
     int Distance3;
@@ -334,7 +335,7 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
     int Light6;
 
     // Parse the comma-separated values
-    if (sscanf(line, "%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1, &Distance1, &Distance2, &Distance3, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6) == 11)
+    if (sscanf(line, "%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1,  &Button2, &Distance1, &Distance2, &Distance3, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6) == 11)
     {
          // Cast back to the correct function pointer type before calling
         int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int) =
@@ -472,7 +473,7 @@ void *arduino_thread(void *arg)
         }
      if (strstr(config->csv_name,"controller")!=0)
         { if (enabledFileOutput)
-           {  fprintf(config->csv_file,"timestamp,dev_timestamp,Button1,Distance1,Distance2,Distance3,Light1,Light2,Light3,Light4,Light5,Light6\n"); }
+           {  fprintf(config->csv_file,"timestamp,dev_timestamp,Button1,Button2,Distance1,Distance2,Distance3,Light1,Light2,Light3,Light4,Light5,Light6\n"); }
         }
 
 
