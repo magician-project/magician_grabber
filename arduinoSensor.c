@@ -335,13 +335,13 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
     int Light6;
 
     // Parse the comma-separated values
-    if (sscanf(line, "%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1,  &Button2, &Distance1, &Distance2, &Distance3, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6) == 11)
+    if (sscanf(line, "%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1,  &Button2, &Distance1, &Distance2, &Distance3, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6) == 12)
     {
          // Cast back to the correct function pointer type before calling
-        int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int) =
-                (int (*)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int)) arduino_config->callback;
+        int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int) =
+                (int (*)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int)) arduino_config->callback;
 
-        return callback_func(arduino_config, timestamp, Button1, Distance1, Distance2, Distance3, Light1, Light2, Light3, Light4, Light5, Light6);  // Call the function
+        return callback_func(arduino_config, timestamp, Button1, Button2, Distance1, Distance2, Distance3, Light1, Light2, Light3, Light4, Light5, Light6);  // Call the function
 
         //printf("Parsed values - Timestamp: %lu, Button1: %d, Distance1: %d, Distance2: %d, Distance3: %d\n", dev_timestamp, Button1, Distance1, Distance2, Distance3);
         return 1;  // Success
