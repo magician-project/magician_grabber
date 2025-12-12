@@ -305,6 +305,9 @@ int gigecamera_stopStream(GiGECameraConfig * context)
   arv_stream_set_emit_signals (stream, FALSE);
   arv_camera_stop_acquisition (camera, &error);
 
+  fprintf(stderr,"Sleeping after stopping acquisition!\n");
+  sleep(2);
+
   /* Destroy the stream object */
   g_clear_object (&stream);
 

@@ -204,8 +204,8 @@ int main (int argc, char **argv)
     pthread_t gigecamera_tid, arduino_tid, teensy_tid, atinetft_tid;
 
     // Initialize Configurations
-    //To debug aravis connection use : arv-camera-test-0.10  -d stream
-    ATINetFTConfig atinetft_config     = {&cfg, "192.168.137.201",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
+    //To debug aravis connection use : arv-camera-test-0.10  -d stream  "192.168.137.201"
+    ATINetFTConfig atinetft_config     = {&cfg, "127.0.0.1",  49152, "tactile/force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, NULL};
     ArduinoSerialConfig teensy_config  = {&cfg, "copy from cfg later",    "tactile/accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0, NULL};
     ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, cfg.arduinoExtraCommand, 0, 0, 0.0, NULL};
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };
@@ -263,7 +263,6 @@ int main (int argc, char **argv)
     }
     #endif // TACTILE
 
-
     if (cfg.useCamera)
     {
       fprintf(stderr,"Configuring camera exposure pins..\n");
@@ -279,6 +278,7 @@ int main (int argc, char **argv)
     if ( (cfg.streamData) && (cfg.useCamera) )
                          {
                            fprintf(stderr,"Starting Camera Stream..\n");
+
                            //We transport the raw sensor as 1 channel! (hence the 1 in next line)
                            streaming_context = startStream("video_frames.shm", "stream1", cfg.width, cfg.height, 1);
                            camera_config.camera_shm_stream = (void*) streaming_context;
@@ -320,7 +320,7 @@ int main (int argc, char **argv)
                              usleep(10000);
                              timeCheck+=1;
 
-                             if (timeCheck>300)
+                             if (timeCheck>3000)
                              {
                                fprintf(stderr,RED "\nCamera timed-out (%u ticks)..\n" NORMAL,timeCheck);
                                cfg.keep_running = 0; //<- this will make the program exit
@@ -445,9 +445,9 @@ int main (int argc, char **argv)
     unsigned long elapsedAcquisitionTime = GetTickCountMicroseconds() - acquisitionStartTime;
     printf("Data collection terminated after %0.2f seconds\n", (double) elapsedAcquisitionTime / 1000000.0);
 
-    usleep(1000);
-    exit(0); //Camera spawns another thread so there is a problem making it join again..
+    usleep(100000);
     if (cfg.useCamera)   { fprintf(stderr,"Releasing Camera\n");  pthread_join(gigecamera_tid, NULL); }
+    exit(0); //Camera spawns another thread so there is a problem making it join again..
 
     return 0;
 }

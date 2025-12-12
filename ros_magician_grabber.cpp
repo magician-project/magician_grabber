@@ -331,13 +331,13 @@ extern "C" int ros_accelerometer_callback(ArduinoSerialConfig *arduino_config, u
     return 0;
 }
 
-extern "C" int ros_controller_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp, int button,
+extern "C" int ros_controller_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp, int button1, int button2,
                                int D1,int D2, int D3,
                                int Light1,int Light2,int Light3,int Light4,int Light5,int Light6)
 {
     if (global_node) 
     {
-        global_node->update_Button(button); 
+        global_node->update_Button(button1); 
         global_node->update_Distances(D1, D2, D3); 
         global_node->update_Lights(Light1, Light2, Light3, Light4, Light5, Light6); 
         return 1;
@@ -621,11 +621,11 @@ int main(int argc, char **argv)
     printf("Data collection terminated after %0.2f seconds\n", (double) elapsedAcquisitionTime / 1000000.0);
 
 
-    usleep(1000);
+    usleep(100000);
     
 
 
     rclcpp::shutdown();
     if (useCamera)   { fprintf(stderr,"Releasing Camera\n");  pthread_join(gigecamera_tid, NULL); }
-return 0;
+    return 0;
 }
