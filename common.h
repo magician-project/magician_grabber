@@ -37,6 +37,8 @@ extern "C"
 #include "colors.h"
 #include "performance.h"
 
+#define MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS 550
+
 #define TACTILE_STREAMING_WINDOW 4000
 #define TACTILE_STREAMING_ELEMENTS 8
 //#define TACTILE_STREAMING_ELEMENTS 16 //Assuming everything enabled
@@ -462,6 +464,11 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         else if (strcmp(argv[i],"--exposure")==0)
         {
             cfg->exposure=atoi(argv[i+1]);
+            if (cfg->exposure>MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS)
+            {
+              fprintf(stderr,"Not allowing exposure to be set to more than %u μsec \n",MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS);
+              cfg->exposure = MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS;
+            }
             fprintf(stderr,"Exposure will be set to %u μsec \n",cfg->exposure);
         }
         else if (strcmp(argv[i],"--gain")==0)

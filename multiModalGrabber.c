@@ -150,7 +150,7 @@ int main (int argc, char **argv)
     // Camera Default settings
     cfg.width      = 2448;
     cfg.height     = 2048;
-    cfg.exposure   = 5500; // 0 means no setting
+    cfg.exposure   = 450; // 0 means no setting
     cfg.gain       = 0.0;
     cfg.blackLevel = 0.0;
     cfg.frameRate  = 10.0; //Each image is 4.5MB,
