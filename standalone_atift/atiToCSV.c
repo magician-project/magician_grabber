@@ -3,10 +3,10 @@
   Logs ATI Net F/T UDP samples to CSV for a given duration.
 
   Usage:
-    ./netft IP PORT OUTPUT.csv DURATION_SECONDS
+    ./atiToCSV IP PORT OUTPUT.csv DURATION_SECONDS
 
   CSV columns:
-    unixtimestamp_us,timestamp,Fx,Fy,Fz,Tx,Ty,Tz
+    unixtimestamp_us,atitimestamp,Fx,Fy,Fz,Tx,Ty,Tz
 
   Notes:
   - unixtimestamp_us is Unix epoch time in microseconds (integer).
@@ -96,7 +96,7 @@ int main(int argc, char **argv)
     }
     if (file_is_empty_or_missing(out_csv))
     {
-        fprintf(fp, "unixtimestamp_us,timestamp,Fx,Fy,Fz,Tx,Ty,Tz\n");
+        fprintf(fp, "unixtimestamp_us,atitimestamp,Fx,Fy,Fz,Tx,Ty,Tz\n");
         fflush(fp);
     }
 
