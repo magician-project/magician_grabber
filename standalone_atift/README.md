@@ -48,12 +48,12 @@ Example:
 ## Usage
 
 ```bash
-./netft IP PORT OUTPUT.csv DURATION_SECONDS
+./atiToCSV IP PORT OUTPUT.csv DURATION_SECONDS
 ```
 
 Example:
 ```bash
-./netft 192.168.1.1 49152 force_data.csv 30
+./atiToCSV 192.168.1.1 49152 force_data.csv 30
 ```
 
 ## Intended Use
