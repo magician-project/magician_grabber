@@ -33,8 +33,10 @@
 #define COMMAND      2      /* RDT command 2: start/stream (common in sample code) */
 #define NUM_SAMPLES  1      /* Request 1 sample per request (simple polling loop)  */
 
-const unsigned long FORCE_RATIO=1000000l;
-const unsigned long TORQUE_RATIO=1000000000l;
+#define SET_TIMEOUT 0
+
+const unsigned long FORCE_RATIO  = 1000000l;
+const unsigned long TORQUE_RATIO = 1000000000l;
 
 typedef unsigned int   uint32;
 typedef int            int32;
@@ -49,7 +51,42 @@ typedef struct response_struct
     int32  FTData[6];
 } RESPONSE;
 
+/* --- Terminal colors / progress bar --- */
+#define NORMAL  "\033[0m"
+#define BLACK   "\033[30m"
+#define RED     "\033[31m"
+#define GREEN   "\033[32m"
+
+#define PROGRESS_BAR_LENGTH 10
+
+static void progress_bar(double elapsed_s, double total_s)
+{
+    double progress = (total_s > 0.0) ? (elapsed_s / total_s) : 1.0;
+    if (progress < 0.0) progress = 0.0;
+    if (progress > 1.0) progress = 1.0;
+
+    int filledLength = (int)(progress * PROGRESS_BAR_LENGTH);
+    if (filledLength > PROGRESS_BAR_LENGTH) filledLength = PROGRESS_BAR_LENGTH;
+
+    printf("[");
+    for (int i = 0; i < PROGRESS_BAR_LENGTH; i++)
+    {
+        if (i < filledLength) { printf(GREEN "█" NORMAL); }
+        else                  { printf("-"); }
+    }
+    printf("]");
+}
+
+/* Epoch time for CSV timestamps */
 static uint64_t unix_time_us(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
+}
+
+/* Monotonic-ish time for progress/rates (gettimeofday is OK for this use) */
+static uint64_t now_us(void)
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -109,13 +146,15 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* Optional: receive timeout so we can exit close to duration even if device stops responding */
+    /* Optional receive timeout */
+#if SET_TIMEOUT
     {
         struct timeval to;
         to.tv_sec = 0;
         to.tv_usec = 250000; /* 250 ms */
         setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof(to));
     }
+#endif
 
     /* Resolve host */
     struct hostent *he = gethostbyname(ip_str);
@@ -151,12 +190,21 @@ int main(int argc, char **argv)
     byte response[36];
     RESPONSE resp;
 
-    uint64_t start_us = unix_time_us();
-    uint64_t end_us = start_us + (uint64_t)(duration_sec * 1000000.0);
+    uint64_t start_us = now_us();
+    uint64_t end_us   = start_us + (uint64_t)(duration_sec * 1000000.0);
 
-    while (unix_time_us() < end_us)
+    /* Stats for bitrate + sample rate */
+    uint64_t total_bytes = 0;
+    uint64_t total_samples = 0;
+
+    uint64_t interval_bytes = 0;
+    uint64_t interval_samples = 0;
+
+    uint64_t last_report_us = start_us;
+    const uint64_t report_period_us = 100000; /* 100 ms => ~10 Hz UI updates */
+
+    while (now_us() < end_us)
     {
-
         ssize_t s = send(socketHandle, request, sizeof(request), 0);
         if (s < 0)
         {
@@ -167,46 +215,99 @@ int main(int argc, char **argv)
         ssize_t r = recv(socketHandle, response, sizeof(response), 0);
         if (r < 0)
         {
-            /* timeout or transient error: keep trying until time is up */
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                continue;
+                /* no data this time, keep trying until time is up */
             }
-            fprintf(stderr, "recv() failed: %s\n", strerror(errno));
-            break;
+            else
+            {
+                fprintf(stderr, "recv() failed: %s\n", strerror(errno));
+                break;
+            }
         }
-        if (r != (ssize_t)sizeof(response))
+        else if (r == (ssize_t)sizeof(response))
         {
-            /* Unexpected packet size; ignore and continue */
-            continue;
-        }
+            /* Parse response */
+            resp.rdt_sequence = ntohl(*(uint32*)&response[0]);
+            resp.ft_sequence  = ntohl(*(uint32*)&response[4]);
+            resp.status       = ntohl(*(uint32*)&response[8]);
+            for (int i = 0; i < 6; i++)
+            {
+                resp.FTData[i] = ntohl(*(int32*)&response[12 + i * 4]);
+            }
 
-        /* Parse response */
-        resp.rdt_sequence = ntohl(*(uint32*)&response[0]);
-        resp.ft_sequence  = ntohl(*(uint32*)&response[4]);
-        resp.status       = ntohl(*(uint32*)&response[8]);
-        for (int i = 0; i < 6; i++)
+            uint64_t uts = unix_time_us();
+
+            double fx = (double)resp.FTData[0] / FORCE_RATIO;
+            double fy = (double)resp.FTData[1] / FORCE_RATIO;
+            double fz = (double)resp.FTData[2] / FORCE_RATIO;
+            double tx = (double)resp.FTData[3] / TORQUE_RATIO;
+            double ty = (double)resp.FTData[4] / TORQUE_RATIO;
+            double tz = (double)resp.FTData[5] / TORQUE_RATIO;
+
+            fprintf(fp, "%" PRIu64 ",%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                    uts,
+                    (unsigned int)resp.ft_sequence,
+                    fx, fy, fz, tx, ty, tz);
+
+            fflush(fp);
+
+            /* Update stats */
+            total_bytes += (uint64_t)r;
+            total_samples += 1;
+
+            interval_bytes += (uint64_t)r;
+            interval_samples += 1;
+        }
+        else
         {
-            resp.FTData[i] = ntohl(*(int32*)&response[12 + i * 4]);
+            /* Unexpected packet size; ignore */
         }
 
-        uint64_t uts = unix_time_us();
+        /* Periodic UI update (avoid printing at 4 kHz) */
+        uint64_t t_us = now_us();
+        if (t_us - last_report_us >= report_period_us)
+        {
+            double elapsed_s = (double)(t_us - start_us) / 1e6;
+            double remain_s  = duration_sec - elapsed_s;
+            if (remain_s < 0.0) remain_s = 0.0;
 
-        double fx = (double)resp.FTData[0] / FORCE_RATIO;
-        double fy = (double)resp.FTData[1] / FORCE_RATIO;
-        double fz = (double)resp.FTData[2] / FORCE_RATIO;
-        double tx = (double)resp.FTData[3] / TORQUE_RATIO;
-        double ty = (double)resp.FTData[4] / TORQUE_RATIO;
-        double tz = (double)resp.FTData[5] / TORQUE_RATIO;
+            double interval_s = (double)(t_us - last_report_us) / 1e6;
+            if (interval_s <= 0.0) interval_s = 1e-9;
 
-        fprintf(fp, "%" PRIu64 ",%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
-                uts,
-                (unsigned int)resp.ft_sequence,
-                fx, fy, fz, tx, ty, tz);
+            /* Current (interval) rates */
+            double bitrate_mbps = ((double)interval_bytes * 8.0) / interval_s / 1e6;
+            double sps_current  = (double)interval_samples / interval_s;
 
-        /* Ensure data hits disk even if interrupted */
-        fflush(fp);
+            /* Average rates since start */
+            double total_s = (double)(t_us - start_us) / 1e6;
+            if (total_s <= 0.0) total_s = 1e-9;
+            double bitrate_avg_mbps = ((double)total_bytes * 8.0) / total_s / 1e6;
+            double sps_avg          = (double)total_samples / total_s;
+
+            /* Draw one updating line */
+            printf("\r");
+            progress_bar(elapsed_s, duration_sec);
+            printf("  %5.1f%%  t=%6.2fs/%6.2fs  "
+                   "bitrate=%7.2f Mb/s (avg %7.2f)  "
+                   "samples/s=%7.0f (avg %7.0f)  "
+                   "samples=%" PRIu64 "  bytes=%" PRIu64 "   ",
+                   (duration_sec > 0.0) ? (100.0 * elapsed_s / duration_sec) : 100.0,
+                   elapsed_s, duration_sec,
+                   bitrate_mbps, bitrate_avg_mbps,
+                   sps_current, sps_avg,
+                   total_samples, total_bytes);
+            fflush(stdout);
+
+            /* Reset interval counters */
+            interval_bytes = 0;
+            interval_samples = 0;
+            last_report_us = t_us;
+        }
     }
+
+    /* Finish line cleanly */
+    printf("\n");
 
     close(socketHandle);
     fclose(fp);
