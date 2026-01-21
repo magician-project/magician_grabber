@@ -33,7 +33,7 @@
 #define COMMAND      2      /* RDT command 2: start/stream (common in sample code) */
 #define NUM_SAMPLES  1      /* Request 1 sample per request (simple polling loop)  */
 
-#define SET_TIMEOUT 0
+#define SET_TIMEOUT 1
 
 const unsigned long FORCE_RATIO  = 1000000l;
 const unsigned long TORQUE_RATIO = 1000000000l;
@@ -151,7 +151,7 @@ int main(int argc, char **argv)
     {
         struct timeval to;
         to.tv_sec = 0;
-        to.tv_usec = 250000; /* 250 ms */
+        to.tv_usec = 0; /* 0 ms */
         setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof(to));
     }
 #endif
