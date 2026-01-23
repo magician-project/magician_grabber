@@ -263,7 +263,7 @@ static void usage(const char *argv0) {
     "  --quiet <int>         Quiet zone modules (default 4)\n"
     "  --invert              Invert colors\n"
     "  --text                Draw payload text (always visible)\n"
-    "  --payload <fmt>       printf-style payload format (default: t=%llu)\n"
+    "  --payload <fmt>       printf-style payload format (default: t=%%llu)\n"
     "  --raw                 Payload is ONLY the timestamp number\n"
     "  --help                Show this help\n"
     "Controls:\n"
@@ -287,7 +287,7 @@ static Opts parse_args(int argc, char **argv) {
   o.have_sety = false;
   o.setx = 0;
   o.sety = 0;
-  snprintf(o.payload_fmt, sizeof(o.payload_fmt), "t=%llu");
+  snprintf(o.payload_fmt, sizeof(o.payload_fmt), "t=%%llu");
   o.payload_specified = false;
 
   for (int i = 1; i < argc; i++) {
@@ -335,7 +335,7 @@ static Opts parse_args(int argc, char **argv) {
 
   if (o.payload_fmt[0] == '\0') 
   {
-    snprintf(o.payload_fmt, sizeof(o.payload_fmt), "t=%llu");
+    snprintf(o.payload_fmt, sizeof(o.payload_fmt), "t=%%llu");
   }
 
   return o;
