@@ -23,7 +23,7 @@
 //    gcc -O2 -std=c11 -Wall -Wextra -pedantic libQRSync.c -o xqr_time_sync -lX11 -lXrandr -lqrencode -lm
 // 
 //  Run:
-//    ./xqr_time_sync --ms --hz 10 --scale 16 --quiet 4 --text --payload "t=%llu"
+//    ./xqr_time_sync --ms --hz 10 --scale 25 --quiet 4 --text --payload "t=%llu"
 
 /* ----------------------------- Utilities ----------------------------- */
 
@@ -138,9 +138,10 @@ static QRecLevel ecc_from_char(char c) {
   }
 }
 
-static void draw_centered_qr_lib(XCtx *x, const QRcode *qr,
-                                int scale, int quiet, bool invert,
-                                bool draw_text, const char *text_line) {
+
+static void draw_qr_at(XCtx *x, const QRcode *qr,
+                       int scale, int quiet, bool invert,
+                       int ox, int oy) {
   const int qrSize = qr->width;
   const int total = qrSize + 2 * quiet;
   const int pix = scale;
@@ -148,15 +149,8 @@ static void draw_centered_qr_lib(XCtx *x, const QRcode *qr,
   const int imgW = total * pix;
   const int imgH = total * pix;
 
-  const int ox = (x->width - imgW) / 2;
-  const int oy = (x->height - imgH) / 2;
-
   unsigned long black = BlackPixel(x->dpy, x->screen);
   unsigned long white = WhitePixel(x->dpy, x->screen);
-
-  // Background
-  XSetForeground(x->dpy, x->gc, invert ? white : black);
-  XFillRectangle(x->dpy, x->win, x->gc, 0, 0, (unsigned)x->width, (unsigned)x->height);
 
   // QR background
   XSetForeground(x->dpy, x->gc, invert ? black : white);
@@ -174,6 +168,40 @@ static void draw_centered_qr_lib(XCtx *x, const QRcode *qr,
       int py0 = oy + (y + quiet) * pix;
       XFillRectangle(x->dpy, x->win, x->gc, px0, py0, (unsigned)pix, (unsigned)pix);
     }
+  }
+}
+
+static void draw_qr_scene(XCtx *x, const QRcode *qr,
+                          int scale, int quiet, bool invert,
+                          int tile_x, bool have_setx, int setx,
+                          bool have_sety, int sety,
+                          bool draw_text, const char *text_line) {
+  const int qrSize = qr->width;
+  const int total = qrSize + 2 * quiet;
+  const int pix = scale;
+
+  const int imgW = total * pix;
+  const int imgH = total * pix;
+
+  if (tile_x < 1) tile_x = 1;
+
+  unsigned long black = BlackPixel(x->dpy, x->screen);
+  unsigned long white = WhitePixel(x->dpy, x->screen);
+
+  // Full background
+  XSetForeground(x->dpy, x->gc, invert ? white : black);
+  XFillRectangle(x->dpy, x->win, x->gc, 0, 0, (unsigned)x->width, (unsigned)x->height);
+
+  // Treat the full X screen as tile_x equal-width "segments" (handy for a 1x3 Xinerama/XRandR desktop).
+  int segW = x->width / tile_x;
+  if (segW <= 0) segW = x->width;
+
+  int oy = have_sety ? sety : (x->height - imgH) / 2;
+
+  for (int i = 0; i < tile_x; i++) {
+    int baseX = i * segW;
+    int ox = have_setx ? (baseX + setx) : (baseX + (segW - imgW) / 2);
+    draw_qr_at(x, qr, scale, quiet, invert, ox, oy);
   }
 
   // Always-visible text: white on black with a small backing box
@@ -215,7 +243,13 @@ typedef struct {
   bool invert;
   bool draw_text;
   char payload_fmt[256];
+  bool payload_specified;
   bool raw_only;
+  int tile_x;
+  bool have_setx;
+  bool have_sety;
+  int setx;
+  int sety;
 } Opts;
 
 static void usage(const char *argv0) {
@@ -239,7 +273,7 @@ static void usage(const char *argv0) {
 }
 
 static Opts parse_args(int argc, char **argv) {
-  Opts o;
+  Opts o={0};
   o.hz = 30.0;
   o.use_ms = true;
   o.ec = 'M';
@@ -248,7 +282,13 @@ static Opts parse_args(int argc, char **argv) {
   o.invert = false;
   o.draw_text = false;
   o.raw_only = false;
+  o.tile_x = 1;
+  o.have_setx = false;
+  o.have_sety = false;
+  o.setx = 0;
+  o.sety = 0;
   snprintf(o.payload_fmt, sizeof(o.payload_fmt), "t=%llu");
+  o.payload_specified = false;
 
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i];
@@ -276,12 +316,28 @@ static Opts parse_args(int argc, char **argv) {
       o.draw_text = true;
     } else if (strcmp(a, "--payload") == 0 && i + 1 < argc) {
       snprintf(o.payload_fmt, sizeof(o.payload_fmt), "%s", argv[++i]);
+      o.payload_specified = true;
     } else if (strcmp(a, "--raw") == 0) {
       o.raw_only = true;
+    } else if (strcmp(a, "--tile") == 0 && i + 1 < argc) {
+      o.tile_x = atoi(argv[++i]);
+      if (o.tile_x < 1) die("Invalid --tile");
+    } else if (strcmp(a, "--setX") == 0 && i + 1 < argc) {
+      o.setx = atoi(argv[++i]);
+      o.have_setx = true;
+    } else if (strcmp(a, "--setY") == 0 && i + 1 < argc) {
+      o.sety = atoi(argv[++i]);
+      o.have_sety = true;
     } else {
       die("Unknown option: %s (try --help)", a);
     }
   }
+
+  if (o.payload_fmt[0] == '\0') 
+  {
+    snprintf(o.payload_fmt, sizeof(o.payload_fmt), "t=%llu");
+  }
+
   return o;
 }
 
@@ -303,35 +359,52 @@ int main(int argc, char **argv) {
   if (interval_ns == 0) interval_ns = 1;
   uint64_t next_ns = now_mono_ns();
 
-  while (running) {
-    while (XPending(x.dpy)) {
+  while (running) 
+  {
+    while (XPending(x.dpy)) 
+    {
       XEvent ev;
       XNextEvent(x.dpy, &ev);
-      if (ev.type == KeyPress) {
+      if (ev.type == KeyPress) 
+        {
         KeySym ks = XLookupKeysym(&ev.xkey, 0);
-        if (ks == XK_Escape || ks == XK_q) {
+        if (ks == XK_Escape || ks == XK_q) 
+        {
           running = false;
-        } else if (ks == XK_space) {
+        } else 
+        if (ks == XK_space) 
+        {
           paused = !paused;
         }
-      } else if (ev.type == ClientMessage) {
-        if ((Atom)ev.xclient.data.l[0] == x.wm_delete) running = false;
-      } else if (ev.type == ConfigureNotify) {
-        x.width = ev.xconfigure.width;
-        x.height = ev.xconfigure.height;
-      }
+      } else 
+        if (ev.type == ClientMessage) 
+        {
+          if ((Atom)ev.xclient.data.l[0] == x.wm_delete) running = false;
+        } else 
+        if (ev.type == ConfigureNotify) 
+        {
+          x.width = ev.xconfigure.width;
+          x.height = ev.xconfigure.height;
+        }
     }
 
-    if (!paused) {
+    if (!paused) 
+   {
       uint64_t t = opt.use_ms ? now_unix_ms() : now_unix_s();
 
       char payload[512];
-      if (opt.raw_only) {
+      if (opt.raw_only) 
+      {
         snprintf(payload, sizeof(payload), "%" PRIu64, t);
-      } else {
-        snprintf(payload, sizeof(payload), opt.payload_fmt,
-                 (unsigned long long)t, (unsigned long long)frame);
-      }
+      } else 
+      if (!opt.payload_specified) 
+      {
+        // Default behavior: equivalent to --payload "t=%llu"
+        snprintf(payload, sizeof(payload), "t=%llu", (unsigned long long)t);
+      } else
+      {
+        snprintf(payload, sizeof(payload), opt.payload_fmt, (unsigned long long)t, (unsigned long long)frame);
+      } 
 
       // Encode QR (8-bit, auto version, specified ECC)
       QRecLevel level = ecc_from_char(opt.ec);
@@ -343,7 +416,9 @@ int main(int argc, char **argv) {
         if (!qr) die("QRcode_encodeString8bit failed");
       }
 
-      draw_centered_qr_lib(&x, qr, opt.scale, opt.quiet, opt.invert, opt.draw_text, payload);
+      draw_qr_scene(&x, qr, opt.scale, opt.quiet, opt.invert,
+                    opt.tile_x, opt.have_setx, opt.setx, opt.have_sety, opt.sety,
+                    opt.draw_text, payload);
       QRcode_free(qr);
 
       frame++;
