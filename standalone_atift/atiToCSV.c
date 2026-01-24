@@ -82,8 +82,14 @@ static void progress_bar(double elapsed_s, double total_s)
     printf("[");
     for (int i = 0; i < PROGRESS_BAR_LENGTH; i++)
     {
-        if (i < filledLength) { printf(GREEN "█" NORMAL); }
-        else                  { printf("-"); }
+        if (i < filledLength)
+        {
+            printf(GREEN "█" NORMAL);
+        }
+        else
+        {
+            printf("-");
+        }
     }
     printf("]");
 }
@@ -131,9 +137,18 @@ static int RegisterTerminationSignals(void (*callback)(void))
     TerminationCallback = callback;
     unsigned int failures = 0;
 
-    if (signal(SIGINT,  Ati_GlobalTerminationHandler)  == SIG_ERR) { ++failures; }
-    if (signal(SIGHUP,  Ati_GlobalTerminationHandler)  == SIG_ERR) { ++failures; }
-    if (signal(SIGTERM, Ati_GlobalTerminationHandler)  == SIG_ERR) { ++failures; }
+    if (signal(SIGINT,  Ati_GlobalTerminationHandler)  == SIG_ERR)
+    {
+        ++failures;
+    }
+    if (signal(SIGHUP,  Ati_GlobalTerminationHandler)  == SIG_ERR)
+    {
+        ++failures;
+    }
+    if (signal(SIGTERM, Ati_GlobalTerminationHandler)  == SIG_ERR)
+    {
+        ++failures;
+    }
     /* NOTE: SIGKILL cannot be caught/handled; do not register it. */
 
     return (failures == 0);
@@ -144,8 +159,8 @@ int main(int argc, char **argv)
     if (argc < 5)
     {
         fprintf(stderr, "Usage: %s IP PORT OUTPUT.csv DURATION_SECONDS\n"
-                        "       (set DURATION_SECONDS to 0 to run forever)\n",
-                        argv[0]);
+                "       (set DURATION_SECONDS to 0 to run forever)\n",
+                argv[0]);
         return 1;
     }
 
@@ -203,7 +218,7 @@ int main(int argc, char **argv)
 
 
 #if INCREASE_RECV_BUFFER
-    int rcvbuf = RECV_BUFFER_SIZE_MB * 1024 * 1024; // MB of RECV buffer 
+    int rcvbuf = RECV_BUFFER_SIZE_MB * 1024 * 1024; // MB of RECV buffer
     setsockopt(socketHandle, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 #endif
 
@@ -244,8 +259,8 @@ int main(int argc, char **argv)
 
     uint64_t start_us = now_us();
     uint64_t end_us   = (duration_sec > 0.0)
-        ? (start_us + (uint64_t)(duration_sec * 1000000.0))
-        : 0;
+                        ? (start_us + (uint64_t)(duration_sec * 1000000.0))
+                        : 0;
 
     /* Stats for bitrate + sample rate */
     uint64_t total_bytes = 0;
@@ -291,7 +306,8 @@ int main(int argc, char **argv)
                 break;
             }
         }
-        else if (r == (ssize_t)sizeof(response))
+        else
+        if (r == (ssize_t)sizeof(response))
         {
             /* Parse response */
             resp.rdt_sequence = ntohl(*(uint32*)&response[0]);
@@ -312,9 +328,7 @@ int main(int argc, char **argv)
             double tz = (double)resp.FTData[5] / TORQUE_RATIO;
 
             fprintf(fp, "%" PRIu64 ",%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
-                    uts,
-                    (unsigned int)resp.ft_sequence,
-                    fx, fy, fz, tx, ty, tz);
+                    uts, (unsigned int)resp.ft_sequence, fx, fy, fz, tx, ty, tz);
 
             /* Update stats */
             total_bytes += (uint64_t)r;
