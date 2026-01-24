@@ -5,6 +5,8 @@
   Usage:
     ./atiToCSV IP PORT OUTPUT.csv DURATION_SECONDS
 
+  Set DURATION_SECONDS to 0 to run forever (until Ctrl+C).
+
   CSV columns:
     unixtimestamp_us,atitimestamp,Fx,Fy,Fz,Tx,Ty,Tz
 
@@ -22,18 +24,27 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#include <signal.h>
+#include <unistd.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #define COMMAND      2      /* RDT command 2: start/stream (common in sample code) */
 #define NUM_SAMPLES  1      /* Request 1 sample per request (simple polling loop)  */
 
-#define SET_TIMEOUT 1
+/*
+   IMPORTANT FOR HIGH-RATE UDP (4kHz+):
+   - Keep recv() blocking (no SO_RCVTIMEO / select timeouts) to minimize overhead.
+   - Avoid per-sample fflush()/printf().
+*/
+#define SET_TIMEOUT 0          /* Set a timeout (0 = disabled) */
+#define TIMEOUT_VALUE_USEC 0   /* Timeout value (unused when SET_TIMEOUT=0) */
+#define INCREASE_RECV_BUFFER 0 /*Do not rely on a sane system recv buffer, set our own*/
+#define RECV_BUFFER_SIZE_MB  4 /*The buffer size in Megabytes*/
 
 const unsigned long FORCE_RATIO  = 1000000l;
 const unsigned long TORQUE_RATIO = 1000000000l;
@@ -100,11 +111,41 @@ static int file_is_empty_or_missing(const char *path)
     return (st.st_size == 0);
 }
 
+/* --- Graceful shutdown (Ctrl+C / SIGTERM) ---
+   Use classic signal() style (no sigaction/sigemptyset), per request.
+   Keep the handler minimal: set a flag that the main loop checks.
+*/
+static volatile sig_atomic_t g_stop_requested = 0;
+
+static void (*TerminationCallback)(void) = 0;
+
+static void Ati_GlobalTerminationHandler(int signum)
+{
+    (void)signum;
+    g_stop_requested = 1;
+    //if (TerminationCallback) { TerminationCallback(); }
+}
+
+static int RegisterTerminationSignals(void (*callback)(void))
+{
+    TerminationCallback = callback;
+    unsigned int failures = 0;
+
+    if (signal(SIGINT,  Ati_GlobalTerminationHandler)  == SIG_ERR) { ++failures; }
+    if (signal(SIGHUP,  Ati_GlobalTerminationHandler)  == SIG_ERR) { ++failures; }
+    if (signal(SIGTERM, Ati_GlobalTerminationHandler)  == SIG_ERR) { ++failures; }
+    /* NOTE: SIGKILL cannot be caught/handled; do not register it. */
+
+    return (failures == 0);
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 5)
     {
-        fprintf(stderr, "Usage: %s IP PORT OUTPUT.csv DURATION_SECONDS\n", argv[0]);
+        fprintf(stderr, "Usage: %s IP PORT OUTPUT.csv DURATION_SECONDS\n"
+                        "       (set DURATION_SECONDS to 0 to run forever)\n",
+                        argv[0]);
         return 1;
     }
 
@@ -118,11 +159,13 @@ int main(int argc, char **argv)
         fprintf(stderr, "Invalid PORT: %s\n", argv[2]);
         return 1;
     }
-    if (!(duration_sec > 0.0))
+    if (duration_sec < 0.0)
     {
-        fprintf(stderr, "Invalid DURATION_SECONDS: %s\n", argv[4]);
+        fprintf(stderr, "Invalid DURATION_SECONDS (must be >= 0): %s\n", argv[4]);
         return 1;
     }
+
+    (void)RegisterTerminationSignals(NULL);
 
     /* Open CSV early */
     FILE *fp = fopen(out_csv, "a");
@@ -134,8 +177,10 @@ int main(int argc, char **argv)
     if (file_is_empty_or_missing(out_csv))
     {
         fprintf(fp, "unixtimestamp_us,atitimestamp,Fx,Fy,Fz,Tx,Ty,Tz\n");
-        fflush(fp);
     }
+
+    /* Buffer CSV output to avoid per-sample disk I/O stalls at high rates */
+    setvbuf(fp, NULL, _IOFBF, 1 << 20); /* 1MB buffer */
 
     /* Create UDP socket */
     int socketHandle = socket(AF_INET, SOCK_DGRAM, 0);
@@ -151,10 +196,17 @@ int main(int argc, char **argv)
     {
         struct timeval to;
         to.tv_sec = 0;
-        to.tv_usec = 0; /* 0 ms */
+        to.tv_usec = TIMEOUT_VALUE_USEC; /* 0 ms */
         setsockopt(socketHandle, SOL_SOCKET, SO_RCVTIMEO, &to, sizeof(to));
     }
 #endif
+
+
+#if INCREASE_RECV_BUFFER
+    int rcvbuf = RECV_BUFFER_SIZE_MB * 1024 * 1024; // MB of RECV buffer 
+    setsockopt(socketHandle, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+#endif
+
 
     /* Resolve host */
     struct hostent *he = gethostbyname(ip_str);
@@ -191,7 +243,9 @@ int main(int argc, char **argv)
     RESPONSE resp;
 
     uint64_t start_us = now_us();
-    uint64_t end_us   = start_us + (uint64_t)(duration_sec * 1000000.0);
+    uint64_t end_us   = (duration_sec > 0.0)
+        ? (start_us + (uint64_t)(duration_sec * 1000000.0))
+        : 0;
 
     /* Stats for bitrate + sample rate */
     uint64_t total_bytes = 0;
@@ -203,11 +257,18 @@ int main(int argc, char **argv)
     uint64_t last_report_us = start_us;
     const uint64_t report_period_us = 100000; /* 100 ms => ~10 Hz UI updates */
 
-    while (now_us() < end_us)
+    uint64_t loop_iters = 0;
+
+    while (!g_stop_requested)
     {
         ssize_t s = send(socketHandle, request, sizeof(request), 0);
         if (s < 0)
         {
+            if (errno == EINTR && g_stop_requested)
+            {
+                /* Interrupted by signal: exit cleanly */
+                break;
+            }
             fprintf(stderr, "send() failed: %s\n", strerror(errno));
             break;
         }
@@ -215,6 +276,11 @@ int main(int argc, char **argv)
         ssize_t r = recv(socketHandle, response, sizeof(response), 0);
         if (r < 0)
         {
+            if (errno == EINTR && g_stop_requested)
+            {
+                /* Interrupted by signal: exit cleanly */
+                break;
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 /* no data this time, keep trying until time is up */
@@ -250,8 +316,6 @@ int main(int argc, char **argv)
                     (unsigned int)resp.ft_sequence,
                     fx, fy, fz, tx, ty, tz);
 
-            fflush(fp);
-
             /* Update stats */
             total_bytes += (uint64_t)r;
             total_samples += 1;
@@ -264,53 +328,81 @@ int main(int argc, char **argv)
             /* Unexpected packet size; ignore */
         }
 
-        /* Periodic UI update (avoid printing at 4 kHz) */
-        uint64_t t_us = now_us();
-        if (t_us - last_report_us >= report_period_us)
+        /*
+           Periodic UI + time checks.
+           IMPORTANT: do NOT call now_us() on every iteration (it can cost packets at 4kHz).
+           Instead, check time occasionally.
+        */
+        ++loop_iters;
+        if ((loop_iters & 0x3FULL) == 0) /* every 64 iterations */
         {
-            double elapsed_s = (double)(t_us - start_us) / 1e6;
-            double remain_s  = duration_sec - elapsed_s;
-            if (remain_s < 0.0) remain_s = 0.0;
+            uint64_t t_us = now_us();
 
-            double interval_s = (double)(t_us - last_report_us) / 1e6;
-            if (interval_s <= 0.0) interval_s = 1e-9;
+            if (duration_sec > 0.0 && t_us >= end_us)
+            {
+                break;
+            }
 
-            /* Current (interval) rates */
-            double bitrate_mbps = ((double)interval_bytes * 8.0) / interval_s / 1e6;
-            double sps_current  = (double)interval_samples / interval_s;
+            if (t_us - last_report_us >= report_period_us)
+            {
+                double elapsed_s = (double)(t_us - start_us) / 1e6;
+                double remain_s  = (duration_sec > 0.0) ? (duration_sec - elapsed_s) : 0.0;
+                if (remain_s < 0.0) remain_s = 0.0;
 
-            /* Average rates since start */
-            double total_s = (double)(t_us - start_us) / 1e6;
-            if (total_s <= 0.0) total_s = 1e-9;
-            double bitrate_avg_mbps = ((double)total_bytes * 8.0) / total_s / 1e6;
-            double sps_avg          = (double)total_samples / total_s;
+                double interval_s = (double)(t_us - last_report_us) / 1e6;
+                if (interval_s <= 0.0) interval_s = 1e-9;
 
-            /* Draw one updating line */
-            printf("\r");
-            progress_bar(elapsed_s, duration_sec);
-            printf("  %5.1f%%  t=%6.2fs/%6.2fs  "
-                   "bitrate=%7.2f Mb/s (avg %7.2f)  "
-                   "samples/s=%7.0f (avg %7.0f)  "
-                   "samples=%" PRIu64 "  bytes=%" PRIu64 "   ",
-                   (duration_sec > 0.0) ? (100.0 * elapsed_s / duration_sec) : 100.0,
-                   elapsed_s, duration_sec,
-                   bitrate_mbps, bitrate_avg_mbps,
-                   sps_current, sps_avg,
-                   total_samples, total_bytes);
-            fflush(stdout);
+                /* Current (interval) rates */
+                double bitrate_mbps = ((double)interval_bytes * 8.0) / interval_s / 1e6;
+                double sps_current  = (double)interval_samples / interval_s;
 
-            /* Reset interval counters */
-            interval_bytes = 0;
-            interval_samples = 0;
-            last_report_us = t_us;
+                /* Average rates since start */
+                double total_s = (double)(t_us - start_us) / 1e6;
+                if (total_s <= 0.0) total_s = 1e-9;
+                double bitrate_avg_mbps = ((double)total_bytes * 8.0) / total_s / 1e6;
+                double sps_avg          = (double)total_samples / total_s;
+
+                /* Draw one updating line */
+                printf("\r");
+                if (duration_sec > 0.0)
+                {
+                    progress_bar(elapsed_s, duration_sec);
+                    printf("  %5.1f%%  t=%6.2fs/%6.2fs  ", 100.0 * elapsed_s / duration_sec, elapsed_s, duration_sec);
+                }
+                else
+                {
+                    /* Run forever: show elapsed only */
+                    printf("[" GREEN "RUN" NORMAL "]  t=%6.2fs  ", elapsed_s);
+                }
+
+                printf("bitrate=%7.2f Mb/s (avg %7.2f)  "
+                       "samples/s=%7.0f (avg %7.0f)  "
+                       "samples=%" PRIu64 "  bytes=%" PRIu64 "   ",
+                       bitrate_mbps, bitrate_avg_mbps,
+                       sps_current, sps_avg,
+                       total_samples, total_bytes);
+                fflush(stdout);
+
+                /* Reset interval counters */
+                interval_bytes = 0;
+                interval_samples = 0;
+                last_report_us = t_us;
+            }
         }
     }
 
     /* Finish line cleanly */
     printf("\n");
 
+    if (g_stop_requested)
+    {
+        fprintf(stderr, "Stopped (signal received). Closing socket and file...\n");
+    }
+
     close(socketHandle);
     fclose(fp);
     return 0;
 }
+
+
 
