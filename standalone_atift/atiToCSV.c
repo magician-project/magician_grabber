@@ -4,6 +4,8 @@
 
   Usage:
     ./atiToCSV IP PORT OUTPUT.csv DURATION_SECONDS
+ 
+    ./atiToCSV 192.168.1.201 49152 positive_dent_b.csv 0
 
   Set DURATION_SECONDS to 0 to run forever (until Ctrl+C).
 
@@ -46,8 +48,8 @@
 #define INCREASE_RECV_BUFFER 0 /*Do not rely on a sane system recv buffer, set our own*/
 #define RECV_BUFFER_SIZE_MB  4 /*The buffer size in Megabytes*/
 
-const unsigned long FORCE_RATIO  = 1000000l;
-const unsigned long TORQUE_RATIO = 1000000000l;
+const unsigned long FORCE_RATIO  = 1000l;
+const unsigned long TORQUE_RATIO = 1000l;
 
 typedef unsigned int   uint32;
 typedef int            int32;
@@ -327,7 +329,7 @@ int main(int argc, char **argv)
             double ty = (double)resp.FTData[4] / TORQUE_RATIO;
             double tz = (double)resp.FTData[5] / TORQUE_RATIO;
 
-            fprintf(fp, "%" PRIu64 ",%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+            fprintf(fp, "%lu" ",%u,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
                     uts, (unsigned int)resp.ft_sequence, fx, fy, fz, tx, ty, tz);
 
             /* Update stats */
