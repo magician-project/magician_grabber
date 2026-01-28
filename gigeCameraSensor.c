@@ -39,6 +39,8 @@ struct Settings
 
 #define EPOCH_YEAR_IN_TM_YEAR 1900
 const unsigned int ARV_VIEWER_N_BUFFERS=20;
+#define TRYHARD_MODE 1
+#define EMMIT_ARAVIS_SIGNALS 0
 
 int writeSettings(const char * filename,struct Settings * settings)
 {
@@ -174,11 +176,17 @@ int gigecamera_startStream(GiGECameraConfig * context)
     camera = arv_camera_new (NULL, &error);
     context->camera = (void*) camera;
 
-    if ( (camera == NULL) && (error != NULL) )
+    if (camera == NULL)
     {
         fprintf (stderr,"\nNo camera found, terminating grabber\n");
         exit(1);
     }
+    if (error != NULL)
+    {
+        fprintf (stderr,"\nError while searching for camera\n");
+        exit(1);
+    }
+
     printf ("Found a device ..\n");
 
     if (ARV_IS_CAMERA (camera))
@@ -202,6 +210,17 @@ int gigecamera_startStream(GiGECameraConfig * context)
                       "packet-request-ratio", 0.75,
                       NULL);*/
 
+            #if TRYHARD_MODE
+            g_object_set(stream,
+                         "packet-resend", ARV_GV_STREAM_PACKET_RESEND_ALWAYS,
+                         "packet-timeout", 40000,          // 40 ms (µs)
+                         "frame-retention", 200000,        // 200 ms (µs)
+                         "packet-request-ratio", 0.5,      // up to 50% of packets can be requested
+                         "socket-buffer-size", 32*1024*1024,
+                        NULL);
+            #endif
+
+
         }
 
         if (ARV_IS_STREAM (stream))
@@ -215,12 +234,20 @@ int gigecamera_startStream(GiGECameraConfig * context)
                 /* Insert some buffers in the stream buffer pool */
                 for (unsigned int i = 0; i < ARV_VIEWER_N_BUFFERS; i++)
                     arv_stream_push_buffer (stream, arv_buffer_new (payload, NULL));
+
+                //arv_stream_create_buffers(stream, ARV_VIEWER_N_BUFFERS, NULL, NULL, NULL);
+
+            } else
+            {
+              fprintf (stderr,"\nFailed allocating %u buffers\n",ARV_VIEWER_N_BUFFERS);
+              exit(1);
             }
 
 
-            arv_stream_set_emit_signals (stream, TRUE);
-            arv_stream_create_buffers(stream, ARV_VIEWER_N_BUFFERS, NULL, NULL, NULL);
 
+            #if EMMIT_ARAVIS_SIGNALS
+            arv_stream_set_emit_signals (stream, TRUE);
+            #endif
 
             if (error == NULL)
                 /* Start the acquisition */
@@ -307,7 +334,9 @@ int gigecamera_stopStream(GiGECameraConfig * context)
   ArvStream *stream = (ArvStream *) context->stream;
 
   /* Stop the acquisition */
+  #if EMMIT_ARAVIS_SIGNALS
   arv_stream_set_emit_signals (stream, FALSE);
+  #endif
   arv_camera_stop_acquisition (camera, &error);
 
   fprintf(stderr,"Sleeping after stopping acquisition!\n");
