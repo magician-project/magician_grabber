@@ -366,11 +366,11 @@ int main(int argc, char **argv)
     char interceptKeyboard = 0;
     char fileOutput        = 1;
     char useRAM       = 0;
-    char useArduino   = 0;
-    char useTeensy    = 1;
-    char useCamera    = 0;
-    char useATIForce  = 1;
-    char streamCamera = 0;
+    char useArduino   = 1;
+    char useTeensy    = 0;
+    char useCamera    = 1;
+    char useATIForce  = 0;
+    char streamCamera = 1;
 
     #if TACTILE
     char calculateTactileFeatures    = 0;
@@ -387,7 +387,7 @@ int main(int argc, char **argv)
     // Camera Default settings
     unsigned int width      = 2448;
     unsigned int height     = 2048;
-    unsigned int exposure   = 5500; // 0 means no setting
+    unsigned int exposure   = 350; // 0 means no setting
     double       gain       = 0.0;
     double       blackLevel = 0.0;
     double       frameRate  = 10.0; //Each image is 4.5MB,
@@ -543,9 +543,8 @@ int main(int argc, char **argv)
     // Run until flag is cleared (placeholder for user signal handling)
     while ((keep_running) && (stop==0))
     {
-        rclcpp::spin(global_node);
+        rclcpp::spin_some(global_node);
     
-
         // Simulate main loop work
         //usleep(1000);
 
@@ -576,7 +575,7 @@ int main(int argc, char **argv)
         fprintf(stderr,"\r");
         //-----------------------------------------------------------------------------------------------------------------
 
-        if (streamCamera) { broadcasting(camera_config.framesCaptured); }
+        //if (streamCamera) { broadcasting(camera_config.framesCaptured); }
         if (run_forever)  { fprintf(stderr,GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
                           {
                            fprintf(stderr,GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
