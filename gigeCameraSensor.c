@@ -450,7 +450,7 @@ void *gigecamera_thread(void *arg)
 
                             if (shm_stream!=NULL)
                                        { stream_image(shm_stream->frame,&dataAsImage); }
-
+                            
                             if (config->callback!=0)
                                        { camera_callback_relay(config, startGrab, &dataAsImage); }
 
@@ -462,6 +462,8 @@ void *gigecamera_thread(void *arg)
                              snprintf(filename,1024,"%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
                              WritePPMG(filename,&dataAsImage);
                             }
+
+                            //At this time we consider that the image has been consumed!
 
                             frameNumber = frameNumber+1;
                             config->framesCaptured = frameNumber; // Update as soon as it is done
@@ -493,6 +495,13 @@ void *gigecamera_thread(void *arg)
                         }
                     }//We have a framerate set
                    //usleep(10);
+                  
+                   if (refreshDimsOnEachFrame)
+                        {   //Since we are resetting dims
+                            //lets put them to zero
+                            dataAsImage.width  = 0;
+                            dataAsImage.height = 0;
+                        }
                 } //While loop
 
 
@@ -507,7 +516,4 @@ void *gigecamera_thread(void *arg)
     gigecamera_stopStream(config);
     return NULL;
 }
-
-
-
 

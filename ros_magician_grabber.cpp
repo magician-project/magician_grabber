@@ -418,7 +418,7 @@ int main(int argc, char **argv)
     cfg.exposure   = 350; // 0 means no setting
     cfg.gain       = 0.0;
     cfg.blackLevel = 0.0;
-    cfg.frameRate  = 10.0; //Each image is 4.5MB,
+    cfg.frameRate  = 18.0; //Each image is 4.5MB,
     //this framerate writes 45MB/sec to disk which is a sane value
     //use --ram to store data on a tmpfs/ for higher speeds
     //use --rt to elevate priority for higher speeds
@@ -615,7 +615,7 @@ int main(int argc, char **argv)
         fprintf(stderr,"\r");
         //-----------------------------------------------------------------------------------------------------------------
 
-        //if (cfg.streamCamera) { broadcasting(camera_config.framesCaptured); }
+        if (cfg.streamData) { broadcasting(camera_config.framesCaptured); }
         if (cfg.run_forever)  { fprintf(stderr,GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
                           {
                            fprintf(stderr,GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
