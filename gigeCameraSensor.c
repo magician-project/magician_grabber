@@ -104,7 +104,7 @@ int WritePPMG(const char * filename,struct Image * pic)
         {
             fprintf(stderr,"Invalid channels arg (%u) for SaveRawImageToFile\n",pic->channels);
             fclose(fd);
-            return 1;
+            return 0;
         }
 
         fprintf(fd, "%d %d\n%u\n", pic->width, pic->height, simplePowPPMG(2,pic->bitsperpixel)-1);
@@ -126,6 +126,11 @@ int WritePPMG(const char * filename,struct Image * pic)
     return 0;
 }
 
+unsigned long getSleepTimeBasedOnFramerate(double frameRate)
+{
+  unsigned long timeToSleepToWaitFor1Frame = (unsigned long) 1000000 / frameRate;
+  return timeToSleepToWaitFor1Frame;
+}
 
 int gigecamera_startStream(GiGECameraConfig * context)
 {
@@ -270,12 +275,11 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
                 //unsigned long startGrab, endGrab;
                 //unsigned long microsecondsGrab;
-                unsigned long timeToSleepToWaitFor1Frame = 0;
 
                 if (settings.frameRate!=0.0)
                 {
                     fprintf(stderr,"Waiting initial period to buffer at least one frame..\n");
-                    timeToSleepToWaitFor1Frame = 1000000 / settings.frameRate;
+                    unsigned long timeToSleepToWaitFor1Frame = getSleepTimeBasedOnFramerate(settings.frameRate);
                     usleep(timeToSleepToWaitFor1Frame);
                 }
 
@@ -382,7 +386,7 @@ void *gigecamera_thread(void *arg)
 
     unsigned long startGrab, endGrab;
     unsigned long microsecondsGrab;
-    unsigned long timeToSleepToWaitFor1Frame = 0;
+    unsigned long timeToSleepToWaitFor1Frame = getSleepTimeBasedOnFramerate(config->frameRate);
     ArvBuffer *buffer = NULL;
 
     char refreshDimsOnEachFrame = 1;
@@ -394,7 +398,6 @@ void *gigecamera_thread(void *arg)
 
     unsigned int i=0;
     //unsigned int ARV_VIEWER_N_BUFFERS=10;
-    struct Settings settings= {0};
     struct Image dataAsImage= {0};
     dataAsImage.width  = config->width;
     dataAsImage.height = config->height;
@@ -412,6 +415,7 @@ void *gigecamera_thread(void *arg)
               exit(1);
             }
           }
+
 
     while (*config->keep_running)
                   {
@@ -483,12 +487,12 @@ void *gigecamera_thread(void *arg)
 
                     endGrab = GetTickCountMicroseconds();
 
-                    if (settings.frameRate!=0.0)
+                    if (config->frameRate!=0.0)
                     {
                         //Enforce framrates to prevent buffer underrun
                         microsecondsGrab = endGrab - startGrab;
                         // Calculate the time to usleep to achieve target framerate
-                        unsigned long targetMicroseconds = 1000000 / settings.frameRate;
+                        unsigned long targetMicroseconds = 1000000 / config->frameRate;
                         if (microsecondsGrab < targetMicroseconds)
                         {
                             usleep(targetMicroseconds - microsecondsGrab);
