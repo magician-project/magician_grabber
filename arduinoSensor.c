@@ -262,7 +262,7 @@ int process_accelerometer_data(ArduinoSerialConfig *arduino_config, char enabled
  // Parse the comma-separated values
  if (sscanf(line, "%lu,%d,%d,%d", &dev_timestamp, &rawX, &rawY, &rawZ) != 4)
     {
-        fprintf(stderr, "Error: Invalid format in line: %s\n", line);
+        fprintf(stderr, "Error: process_accelerometer_data Invalid format in line: %s\n", line);
         return 0; // Error in parsing
     }
 
@@ -334,9 +334,19 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
     int Light5;
     int Light6;
 
+    char distanceStrA[128]={0};
+    char distanceStrB[128]={0};
+    char distanceStrC[128]={0};
     // Parse the comma-separated values
-    if (sscanf(line, "%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1,  &Button2, &Distance1, &Distance2, &Distance3, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6) == 12)
+    int res = sscanf(line, 
+    "%lu,%d,%d,%127[^,],%127[^,],%127[^,],%d,%d,%d,%d,%d,%d", &dev_timestamp, &Button1,  &Button2, distanceStrA, distanceStrB, distanceStrC, &Light1, &Light2, &Light3, &Light4, &Light5, &Light6); 
+    if ( res == 12)
     {
+
+        Distance1 = atoi(distanceStrA);  
+        Distance2 = atoi(distanceStrB);  
+        Distance3 = atoi(distanceStrC);  
+
          // Cast back to the correct function pointer type before calling
         int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int) =
                 (int (*)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int)) arduino_config->callback;
@@ -347,7 +357,7 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
         return 1;  // Success
     } else
     {
-        fprintf(stderr, "Error: Invalid format in line: %s\n", line);
+        fprintf(stderr, "Error (%u): arduino_call_string_callback Invalid format in line: %s\n",res, line);
         return 0; // Error in parsing
     }
 
