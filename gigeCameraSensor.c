@@ -42,6 +42,177 @@ const unsigned int ARV_VIEWER_N_BUFFERS=20;
 #define TRYHARD_MODE 1
 #define EMMIT_ARAVIS_SIGNALS 0
 
+#include <errno.h>
+#include <ctype.h>
+
+/* ---------- OS/UDP tuning helpers (Linux) ---------- */
+
+static long long read_proc_ll(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    long long v = -1;
+    if (fscanf(f, "%lld", &v) != 1) v = -1;
+    fclose(f);
+    return v;
+}
+
+/* Reads "min default max" triplets from /proc/sys/net/ipv4/udp_rmem_min etc.
+   Some files contain a single value; this function handles both. */
+static int read_proc_triplet_ll(const char *path, long long out[3])
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+
+    char buf[256] = {0};
+    if (!fgets(buf, sizeof(buf), f)) { fclose(f); return -1; }
+    fclose(f);
+
+    // Try parse three numbers
+    long long a=-1,b=-1,c=-1;
+    int n = sscanf(buf, "%lld %lld %lld", &a, &b, &c);
+    if (n == 3) { out[0]=a; out[1]=b; out[2]=c; return 0; }
+
+    // Try parse single number, mirror to all three
+    a = -1;
+    n = sscanf(buf, "%lld", &a);
+    if (n == 1) { out[0]=a; out[1]=a; out[2]=a; return 0; }
+
+    return -1;
+}
+
+static const char* yesno(int cond) { return cond ? "YES" : "no"; }
+
+/* Call this once at startup after you know you're using GigE (UDP) streaming. */
+static void gigecamera_print_udp_os_guidance(void)
+{
+    fprintf(stderr,
+        "\n========== UDP / GigE Vision OS-side checklist (Linux) ==========\n"
+        "If you see missing packets, incomplete frames, or Aravis 'n_failures' rising,\n"
+        "the most common cause is the host/network dropping UDP due to buffer limits or bursts.\n\n");
+
+    // Core socket buffer limits
+    long long rmem_max = read_proc_ll("/proc/sys/net/core/rmem_max");
+    long long rmem_def = read_proc_ll("/proc/sys/net/core/rmem_default");
+    long long wmem_max = read_proc_ll("/proc/sys/net/core/wmem_max");
+    long long wmem_def = read_proc_ll("/proc/sys/net/core/wmem_default");
+
+    // UDP-specific min buffers (may not exist on all kernels)
+    long long udp_rmem[3] = {-1,-1,-1};
+    long long udp_wmem[3] = {-1,-1,-1};
+    int have_udp_rmem = (read_proc_triplet_ll("/proc/sys/net/ipv4/udp_rmem_min", udp_rmem) == 0);
+    int have_udp_wmem = (read_proc_triplet_ll("/proc/sys/net/ipv4/udp_wmem_min", udp_wmem) == 0);
+
+    // Backlog / drops counters (best-effort)
+    long long netdev_max_backlog = read_proc_ll("/proc/sys/net/core/netdev_max_backlog");
+
+    if (rmem_max >= 0) {
+        fprintf(stderr, "Current kernel socket buffers:\n");
+        fprintf(stderr, "  net.core.rmem_max     = %lld bytes\n", rmem_max);
+        fprintf(stderr, "  net.core.rmem_default = %lld bytes\n", rmem_def);
+        fprintf(stderr, "  net.core.wmem_max     = %lld bytes\n", wmem_max);
+        fprintf(stderr, "  net.core.wmem_default = %lld bytes\n", wmem_def);
+        if (netdev_max_backlog >= 0)
+            fprintf(stderr, "  net.core.netdev_max_backlog = %lld\n", netdev_max_backlog);
+        fprintf(stderr, "\n");
+    } else {
+        fprintf(stderr,
+            "Could not read /proc/sys/net/core/* (not Linux? restricted container?).\n\n");
+    }
+
+    if (have_udp_rmem || have_udp_wmem) {
+        fprintf(stderr, "UDP kernel minima:\n");
+        if (have_udp_rmem)
+            fprintf(stderr, "  net.ipv4.udp_rmem_min = %lld (min)\n", udp_rmem[0]);
+        if (have_udp_wmem)
+            fprintf(stderr, "  net.ipv4.udp_wmem_min = %lld (min)\n", udp_wmem[0]);
+        fprintf(stderr, "\n");
+    }
+
+    // Heuristics: warn if clearly too small for high-throughput GigE Vision
+    // (These are conservative “starter” thresholds.)
+    const long long RECOMM_RMEM_MAX = 32LL * 1024 * 1024;   // 32 MB
+    const long long RECOMM_WMEM_MAX = 8LL  * 1024 * 1024;   // 8 MB
+    const long long RECOMM_BACKLOG  = 5000;
+
+    int warn_rmem = (rmem_max > 0 && rmem_max < RECOMM_RMEM_MAX);
+    int warn_wmem = (wmem_max > 0 && wmem_max < RECOMM_WMEM_MAX);
+    int warn_backlog = (netdev_max_backlog > 0 && netdev_max_backlog < RECOMM_BACKLOG);
+
+    if (warn_rmem || warn_wmem || warn_backlog) {
+        fprintf(stderr,
+            "WARNING: Kernel defaults look low for high-rate UDP imaging:\n"
+            "  rmem_max low?   %s\n"
+            "  wmem_max low?   %s\n"
+            "  backlog low?    %s\n\n",
+            yesno(warn_rmem), yesno(warn_wmem), yesno(warn_backlog));
+    }
+
+    fprintf(stderr,
+        "Suggested TEMPORARY tuning (until reboot) — copy/paste as root:\n"
+        "  sudo sysctl -w net.core.rmem_max=33554432\n"
+        "  sudo sysctl -w net.core.rmem_default=33554432\n"
+        "  sudo sysctl -w net.core.wmem_max=8388608\n"
+        "  sudo sysctl -w net.core.wmem_default=8388608\n"
+        "  sudo sysctl -w net.core.netdev_max_backlog=5000\n");
+
+    // Only print UDP min sysctls if we could read them (kernel dependent)
+    if (have_udp_rmem) {
+        fprintf(stderr,
+            "  sudo sysctl -w net.ipv4.udp_rmem_min=8192\n");
+    }
+    if (have_udp_wmem) {
+        fprintf(stderr,
+            "  sudo sysctl -w net.ipv4.udp_wmem_min=8192\n");
+    }
+
+    fprintf(stderr,
+        "\nTo make it PERSISTENT, create /etc/sysctl.d/99-gigevision.conf with those lines\n"
+        "and run: sudo sysctl --system\n\n"
+        "NIC / network checklist (very common causes of UDP loss):\n"
+        "  • Confirm MTU is consistent end-to-end (camera, switch, NIC). If using jumbo (e.g. 9000),\n"
+        "    EVERY hop must support it.\n"
+        "  • Prefer a dedicated NIC or VLAN; avoid congested shared networks.\n"
+        "  • Disable NIC power-saving features if they cause jitter.\n"
+        "  • If packet loss persists at high bandwidth, reduce camera bandwidth:\n"
+        "      - lower FPS or ROI/payload, or\n"
+        "      - increase camera inter-packet delay (camera feature), or\n"
+        "      - reduce GVSP packet size (if supported), especially if jumbo is flaky.\n"
+        "===============================================================\n\n");
+}
+
+/* Call this periodically when you suspect issues, e.g. every ~1s, or when failures rise.
+   It prints stream stats and gives next-step guidance when problems appear. */
+static void gigecamera_print_aravis_udp_health(ArvStream *stream, unsigned int frames, unsigned int framesInPeriod)
+{
+    if (!stream) return;
+
+    guint64 n_completed=0, n_failures=0, n_underruns=0;
+    arv_stream_get_statistics(stream, &n_completed, &n_failures, &n_underruns);
+
+    // Print a compact status line
+    fprintf(stderr,
+        "[Aravis] frames=%u (+%u recent) completed=%" G_GUINT64_FORMAT
+        " failures=%" G_GUINT64_FORMAT " underruns=%" G_GUINT64_FORMAT "\n",
+        frames, framesInPeriod, n_completed, n_failures, n_underruns);
+
+    // Guidance when things look bad
+    if (n_failures > 0 || n_underruns > 0) {
+        fprintf(stderr,
+            "  [Hint] Detected stream failures/underruns. This often indicates UDP packet loss or\n"
+            "         receiver overload. Try, in this order:\n"
+            "    1) Increase OS UDP/socket buffers (see the UDP checklist printed at startup).\n"
+            "    2) In Aravis, set a larger 'socket-buffer-size' on the GvStream.\n"
+            "    3) Enable/raise packet resend + tune 'packet-timeout' and 'frame-retention'.\n"
+            "    4) Reduce bandwidth: smaller ROI, lower FPS, add camera inter-packet delay.\n"
+            "    5) Verify MTU/jumbo consistency across camera/switch/NIC.\n");
+    }
+}
+
+
+
+
+
 int writeSettings(const char * filename,struct Settings * settings)
 {
     FILE * fp = fopen(filename,"w");
@@ -139,6 +310,9 @@ unsigned long getSleepTimeBasedOnFramerate(double frameRate)
 int gigecamera_startStream(GiGECameraConfig * context)
 {
     fprintf(stderr,"Starting camera stream");
+     
+    gigecamera_print_udp_os_guidance();
+
     // Set up SIGTERM signal handler
     struct sigaction action;
     action.sa_handler = sigterm_handler;
