@@ -38,6 +38,7 @@ struct Settings
 #include <time.h>
 
 #define EPOCH_YEAR_IN_TM_YEAR 1900
+const unsigned int ARV_VIEWER_N_BUFFERS=20;
 
 int writeSettings(const char * filename,struct Settings * settings)
 {
@@ -50,7 +51,8 @@ int writeSettings(const char * filename,struct Settings * settings)
         fprintf(fp,"\"blackLevel\": %f,\n",settings->blackLevel);
         fprintf(fp,"\"gain\": %f,\n",settings->gain);
         fprintf(fp,"\"frameRate\": %f,\n",settings->frameRate);
-        fprintf(fp,"\"tickCommand\": \"%s\"\n}\n",settings->tickCommand);
+        if (settings->tickCommand!=0)
+          { fprintf(fp,"\"tickCommand\": \"%s\"\n}\n",settings->tickCommand); }
         fclose(fp);
         return 1;
     }
@@ -148,7 +150,6 @@ int gigecamera_startStream(GiGECameraConfig * context)
 
 
     //unsigned int i=0;
-    unsigned int ARV_VIEWER_N_BUFFERS=10;
     struct Settings settings= {0};
     struct Image dataAsImage= {0};
 
@@ -395,8 +396,7 @@ void *gigecamera_thread(void *arg)
     char filename[2048]= {0};
     unsigned int frameNumber = 0;
     unsigned int brokenFrameNumber = 0;
-
-    unsigned int i=0;
+ 
     //unsigned int ARV_VIEWER_N_BUFFERS=10;
     struct Image dataAsImage= {0};
     dataAsImage.width  = config->width;
@@ -417,7 +417,7 @@ void *gigecamera_thread(void *arg)
           }
 
 
-    while (*config->keep_running)
+    while (*config->keep_running && !termination_requested)
                   {
                     startGrab = GetTickCountMicroseconds();
                     buffer = arv_stream_pop_buffer (stream);
@@ -440,7 +440,7 @@ void *gigecamera_thread(void *arg)
                             dataAsImage.channels     = 1;
                             dataAsImage.bitsperpixel = 8;
                             dataAsImage.image_size   = dataAsImage.width  * dataAsImage.height * dataAsImage.channels;
-                            dataAsImage.timestamp    = i;
+                            dataAsImage.timestamp    = (unsigned int) GetTickCountMicroseconds() / 1000;
 
                             /* Display some informations about the retrieved buffer */
                             //printf ("Acquired %d×%d buffer\n",dataAsImage.width,dataAsImage.height);
