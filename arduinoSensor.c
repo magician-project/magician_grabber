@@ -199,7 +199,7 @@ int arduino_signalNewFrame(ArduinoSerialConfig * context)
   {
     if (context->global->useArduino)
     {
-     fprintf(stderr,"Trigger light change to %s \n",context->port_name);
+     //fprintf(stderr,"Trigger light change to %s \n",context->port_name);
      char buffer[]={"+\n"};
      int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
 
