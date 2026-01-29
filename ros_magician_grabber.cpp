@@ -415,10 +415,10 @@ int main(int argc, char **argv)
     // Camera Default settings
     cfg.width      = 2448;
     cfg.height     = 2048;
-    cfg.exposure   = 350; // 0 means no setting
+    cfg.exposure   = 450; // 0 means no setting
     cfg.gain       = 0.0;
     cfg.blackLevel = 0.0;
-    cfg.frameRate  = 18.0; //Each image is 4.5MB,
+    cfg.frameRate  = 20.0; //Each image is 4.5MB,
     //this framerate writes 45MB/sec to disk which is a sane value
     //use --ram to store data on a tmpfs/ for higher speeds
     //use --rt to elevate priority for higher speeds
