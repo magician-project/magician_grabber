@@ -38,7 +38,7 @@ struct Settings
 #include <time.h>
 
 #define EPOCH_YEAR_IN_TM_YEAR 1900
-const unsigned int ARV_VIEWER_N_BUFFERS=20;
+const unsigned int ARV_VIEWER_N_BUFFERS=100;
 #define TRYHARD_MODE 1
 #define EMMIT_ARAVIS_SIGNALS 0
 
@@ -223,9 +223,14 @@ int writeSettings(const char * filename,struct Settings * settings)
         fprintf(fp,"\"exposure\": %u,\n",settings->exposure);
         fprintf(fp,"\"blackLevel\": %f,\n",settings->blackLevel);
         fprintf(fp,"\"gain\": %f,\n",settings->gain);
-        fprintf(fp,"\"frameRate\": %f,\n",settings->frameRate);
         if (settings->tickCommand!=0)
-          { fprintf(fp,"\"tickCommand\": \"%s\"\n}\n",settings->tickCommand); }
+          { 
+             fprintf(fp,"\"frameRate\": %f,\n",settings->frameRate); 
+             fprintf(fp,"\"tickCommand\": \"%s\"\n}\n",settings->tickCommand); 
+          } else
+          { 
+             fprintf(fp,"\"frameRate\": %f }\n",settings->frameRate);
+          }
         fclose(fp);
         return 1;
     }
@@ -620,10 +625,149 @@ void *gigecamera_thread(void *arg)
           }
 
 
+while (*config->keep_running && !termination_requested)
+{
+    startGrab = GetTickCountMicroseconds();
+
+    // Prefer timeout_pop to avoid busy waiting.
+    // Timeout is in microseconds in Aravis; pick something near frame period.
+    // If you don't have timeout_pop_buffer available in your Aravis version,
+    // you can keep pop_buffer + usleep, but timeout_pop is nicer.
+    buffer = arv_stream_timeout_pop_buffer(stream, 20000); // 20ms
+
+    if (!ARV_IS_BUFFER(buffer)) {
+        // No buffer ready yet (or stream starving). Sleep a bit to reduce CPU.
+        usleep(1000);
+        continue;
+    }
+
+    config->running = 1;
+
+    // 1) CRITICAL: Always check status first. UDP loss/incomplete frames show up here.
+    ArvBufferStatus st = arv_buffer_get_status(buffer);
+    if (st != ARV_BUFFER_STATUS_SUCCESS) {
+        brokenFrameNumber++;
+
+        // Optional: print occasional guidance when problems happen
+        if ((brokenFrameNumber % 100) == 1) {
+            arv_stream_get_statistics(stream,
+                                      &config->n_completed_buffers,
+                                      &config->n_failures,
+                                      &config->n_underruns);
+            fprintf(stderr,
+                "[Aravis] Non-success buffer (status=%d). completed=%" G_GUINT64_FORMAT
+                " failures=%" G_GUINT64_FORMAT " underruns=%" G_GUINT64_FORMAT "\n"
+                "  Hint: This often indicates UDP packet loss or receiver overload.\n"
+                "        - Increase OS UDP/socket buffers (rmem_max / netdev_max_backlog)\n"
+                "        - Increase ArvGvStream socket-buffer-size\n"
+                "        - Enable/tune packet resend + packet-timeout/frame-retention\n"
+                "        - Reduce bandwidth: ROI/FPS or add camera inter-packet delay\n",
+                (int)st,
+                config->n_completed_buffers, config->n_failures, config->n_underruns);
+        }
+
+        // Requeue buffer and move on
+        arv_stream_push_buffer(stream, buffer);
+        continue;
+    }
+
+    // 2) Get dimensions/data only for SUCCESS buffers
+    if (refreshDimsOnEachFrame || dataAsImage.width == 0 || dataAsImage.height == 0) {
+        dataAsImage.width  = (unsigned int) arv_buffer_get_image_width(buffer);
+        dataAsImage.height = (unsigned int) arv_buffer_get_image_height(buffer);
+    }
+
+    if (dataAsImage.width == 0 || dataAsImage.height == 0) {
+        brokenFrameNumber++;
+        arv_stream_push_buffer(stream, buffer);
+        continue;
+    }
+
+    size_t size = 0;
+    data = arv_buffer_get_image_data(buffer, &size);
+
+    if (data == NULL || size == 0) {
+        brokenFrameNumber++;
+        arv_stream_push_buffer(stream, buffer);
+        continue;
+    }
+
+    dataAsImage.pixels = (unsigned char*)data;
+
+    // NOTE: You hardcode mono8 here. OK if camera is configured for Mono8.
+    // If not, you should map pixel format -> channels/bpp properly.
+    dataAsImage.channels     = 1;
+    dataAsImage.bitsperpixel = 8;
+
+    // Use size from Aravis rather than width*height when possible (safer for strides/packing).
+    // If your downstream expects exact width*height, keep that, but ensure it matches `size`.
+    dataAsImage.image_size = (unsigned int)size;
+
+    dataAsImage.timestamp = (unsigned int)(GetTickCountMicroseconds() / 1000ULL);
+
+    // Stats + computed fps
+    unsigned long endTime = GetTickCountMicroseconds();
+    arv_stream_get_statistics(stream,
+                              &config->n_completed_buffers,
+                              &config->n_failures,
+                              &config->n_underruns);
+
+    config->actualFrameRate = (double)frameNumber / ((endTime - startTime) / 1000000.0);
+
+    // --- Your consumers ---
+    if (shm_stream != NULL) {
+        stream_image(shm_stream->frame, &dataAsImage);
+    }
+
+    if (config->callback != 0) {
+        camera_callback_relay(config, startGrab, &dataAsImage);
+    }
+
+    if (enabledFileOutput) {
+        fprintf(config->csv_file, "%lu,", GetTickCountMicroseconds());
+        fprintf(config->csv_file, "%u\n", frameNumber);
+        snprintf(filename, 1024, "%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
+        WritePPMG(filename, &dataAsImage);
+    }
+
+    // Update counters
+    frameNumber++;
+    config->framesCaptured = frameNumber;
+
+    // 3) Requeue buffer ASAP once you're done consuming its data
+    arv_stream_push_buffer(stream, buffer);
+
+    endGrab = GetTickCountMicroseconds();
+
+    // 4) Optional pacing (if you truly need to limit CPU/bandwidth).
+    if (config->frameRate > 0.0) {
+        unsigned long microsecondsGrab = endGrab - startGrab;
+        unsigned long targetMicroseconds = (unsigned long)(1000000.0 / config->frameRate);
+        if (microsecondsGrab < targetMicroseconds) {
+            usleep(targetMicroseconds - microsecondsGrab);
+        }
+    }
+
+    if (refreshDimsOnEachFrame) {
+        dataAsImage.width  = 0;
+        dataAsImage.height = 0;
+    }
+}
+
+
+/*
     while (*config->keep_running && !termination_requested)
                   {
                     startGrab = GetTickCountMicroseconds();
                     buffer = arv_stream_pop_buffer (stream);
+
+
+                    if (!ARV_IS_BUFFER(buffer)) {
+                                  // No buffer ready yet (or stream starving). Sleep a bit to reduce CPU.
+                                  usleep(1000);
+                                  //continue;
+                                } else
+
                     if (ARV_IS_BUFFER(buffer))
                     {
                         config->running = 1;
@@ -645,7 +789,7 @@ void *gigecamera_thread(void *arg)
                             dataAsImage.image_size   = dataAsImage.width  * dataAsImage.height * dataAsImage.channels;
                             dataAsImage.timestamp    = (unsigned int) GetTickCountMicroseconds() / 1000;
 
-                            /* Display some informations about the retrieved buffer */
+                            // Display some informations about the retrieved buffer 
                             //printf ("Acquired %d×%d buffer\n",dataAsImage.width,dataAsImage.height);
                             unsigned long endTime = GetTickCountMicroseconds();
 
@@ -680,7 +824,7 @@ void *gigecamera_thread(void *arg)
                             brokenFrameNumber = brokenFrameNumber + 1;
                         }
 
-                        /* Don't destroy the buffer, but put it back into the buffer pool */
+                        // Don't destroy the buffer, but put it back into the buffer pool
                         arv_stream_push_buffer (stream, buffer);
                     }
                     else
@@ -710,6 +854,8 @@ void *gigecamera_thread(void *arg)
                             dataAsImage.height = 0;
                         }
                 } //While loop
+  */
+
 
 
     fprintf(stderr,"Camera Thread terminating\n");

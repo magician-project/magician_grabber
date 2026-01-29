@@ -10,6 +10,8 @@ source ~/.bashrc
 source src/magician_vision_classifier/venv/bin/activate
 source install/setup.bash 
 
+#export ARV_DEBUG=stream:3,gv:3,device:3
+
 
 #We provide no arguments since the defaults of the binary
 #Should already match the platform
