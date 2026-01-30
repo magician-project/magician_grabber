@@ -15,7 +15,7 @@ source install/setup.bash
 
 #We provide no arguments since the defaults of the binary
 #Should already match the platform
-build/rclcpp_magician_grabber/magician_grabber 
+build/rclcpp_magician_grabber/magician_grabber $@
 
 
 

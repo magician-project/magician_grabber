@@ -300,7 +300,6 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::AccelStamped>::SharedPtr publisheraccXYZ_;
 
 /*
-/*
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfX_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfY_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherfZ_;
@@ -415,7 +414,7 @@ int main(int argc, char **argv)
     // Camera Default settings
     cfg.width      = 2448;
     cfg.height     = 2048;
-    cfg.exposure   = 450; // 0 means no setting
+    cfg.exposure   = 650; // 0 means no setting
     cfg.gain       = 0.0;
     cfg.blackLevel = 0.0;
     cfg.frameRate  = 20.0; //Each image is 4.5MB,
@@ -428,6 +427,14 @@ int main(int argc, char **argv)
     //if (fileOutput==0) {  }
     noOutputDirectory(&cfg); //<- ROS Has no file output
     cfg.maxTimeToGrabForInSeconds = 0; 
+
+    //=============================================================
+    //  See common.h -> parse_arguments() or run with --help
+    //                 for all available options
+    //=============================================================
+    parse_arguments(&cfg,argc,argv);
+    //=============================================================
+    //=============================================================
 
 
     // Arduino commands
@@ -632,7 +639,7 @@ int main(int argc, char **argv)
         if (cfg.useTeensy)   { fprintf(stderr,"|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
         if (cfg.useATIForce) { fprintf(stderr,"|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
         //-----------------------------------------------------------------------------------------------------------------
-        fprintf(stderr,"|   \r");
+        fprintf(stderr,"|          \r");
 
 
 

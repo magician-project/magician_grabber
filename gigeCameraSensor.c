@@ -605,7 +605,6 @@ void *gigecamera_thread(void *arg)
     unsigned int frameNumber = 0;
     unsigned int brokenFrameNumber = 0;
  
-    //unsigned int ARV_VIEWER_N_BUFFERS=10;
     struct Image dataAsImage= {0};
     dataAsImage.width  = config->width;
     dataAsImage.height = config->height;
@@ -625,17 +624,20 @@ void *gigecamera_thread(void *arg)
           }
 
 
+
 while (*config->keep_running && !termination_requested)
 {
+    char lastFrameIsBroken = 0;
     startGrab = GetTickCountMicroseconds();
 
     // Prefer timeout_pop to avoid busy waiting.
     // Timeout is in microseconds in Aravis; pick something near frame period.
-    // If you don't have timeout_pop_buffer available in your Aravis version,
-    // you can keep pop_buffer + usleep, but timeout_pop is nicer.
     buffer = arv_stream_timeout_pop_buffer(stream, 20000); // 20ms
 
-    if (!ARV_IS_BUFFER(buffer)) {
+    if (!ARV_IS_BUFFER(buffer)) 
+    {
+        brokenFrameNumber++;
+        lastFrameIsBroken=1;
         // No buffer ready yet (or stream starving). Sleep a bit to reduce CPU.
         usleep(1000);
         continue;
@@ -645,8 +647,10 @@ while (*config->keep_running && !termination_requested)
 
     // 1) CRITICAL: Always check status first. UDP loss/incomplete frames show up here.
     ArvBufferStatus st = arv_buffer_get_status(buffer);
-    if (st != ARV_BUFFER_STATUS_SUCCESS) {
+    if (st != ARV_BUFFER_STATUS_SUCCESS) 
+    {
         brokenFrameNumber++;
+        lastFrameIsBroken=1;
 
         // Optional: print occasional guidance when problems happen
         if ((brokenFrameNumber % 100) == 1) {
@@ -672,13 +676,16 @@ while (*config->keep_running && !termination_requested)
     }
 
     // 2) Get dimensions/data only for SUCCESS buffers
-    if (refreshDimsOnEachFrame || dataAsImage.width == 0 || dataAsImage.height == 0) {
+    if (refreshDimsOnEachFrame || dataAsImage.width == 0 || dataAsImage.height == 0) 
+    {
         dataAsImage.width  = (unsigned int) arv_buffer_get_image_width(buffer);
         dataAsImage.height = (unsigned int) arv_buffer_get_image_height(buffer);
     }
 
-    if (dataAsImage.width == 0 || dataAsImage.height == 0) {
+    if (dataAsImage.width == 0 || dataAsImage.height == 0) 
+    {
         brokenFrameNumber++;
+        lastFrameIsBroken=1;
         arv_stream_push_buffer(stream, buffer);
         continue;
     }
@@ -686,15 +693,17 @@ while (*config->keep_running && !termination_requested)
     size_t size = 0;
     data = arv_buffer_get_image_data(buffer, &size);
 
-    if (data == NULL || size == 0) {
+    if (data == NULL || size == 0) 
+    {
         brokenFrameNumber++;
+        lastFrameIsBroken=1;
         arv_stream_push_buffer(stream, buffer);
         continue;
     }
 
     dataAsImage.pixels = (unsigned char*)data;
 
-    // NOTE: You hardcode mono8 here. OK if camera is configured for Mono8.
+    // NOTE: Hardcoded mono8 here. OK if camera is configured for Mono8.
     // If not, you should map pixel format -> channels/bpp properly.
     dataAsImage.channels     = 1;
     dataAsImage.bitsperpixel = 8;
@@ -714,41 +723,38 @@ while (*config->keep_running && !termination_requested)
 
     config->actualFrameRate = (double)frameNumber / ((endTime - startTime) / 1000000.0);
 
-    // --- Your consumers ---
-    if (shm_stream != NULL) {
-        stream_image(shm_stream->frame, &dataAsImage);
-    }
-
-    if (config->callback != 0) {
-        camera_callback_relay(config, startGrab, &dataAsImage);
-    }
-
-    if (enabledFileOutput) {
-        fprintf(config->csv_file, "%lu,", GetTickCountMicroseconds());
-        fprintf(config->csv_file, "%u\n", frameNumber);
-        snprintf(filename, 1024, "%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
-        WritePPMG(filename, &dataAsImage);
-    }
+    // --- Data consumers ---
+    if (shm_stream != NULL)    { stream_image(shm_stream->frame, &dataAsImage);          }
+    if (config->callback != 0) { camera_callback_relay(config, startGrab, &dataAsImage); }
+    if (enabledFileOutput)     {
+                                fprintf(config->csv_file, "%lu,", GetTickCountMicroseconds());
+                                fprintf(config->csv_file, "%u\n", frameNumber);
+                                snprintf(filename, 1024, "%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
+                                WritePPMG(filename, &dataAsImage);
+                               }
 
     // Update counters
     frameNumber++;
     config->framesCaptured = frameNumber;
 
-    // 3) Requeue buffer ASAP once you're done consuming its data
+    // 3) Requeue buffer ASAP once done consuming its data
     arv_stream_push_buffer(stream, buffer);
 
     endGrab = GetTickCountMicroseconds();
 
     // 4) Optional pacing (if you truly need to limit CPU/bandwidth).
-    if (config->frameRate > 0.0) {
-        unsigned long microsecondsGrab = endGrab - startGrab;
+    if (config->frameRate > 0.0) 
+    {
+        unsigned long microsecondsGrab   = endGrab - startGrab;
         unsigned long targetMicroseconds = (unsigned long)(1000000.0 / config->frameRate);
-        if (microsecondsGrab < targetMicroseconds) {
+        if (microsecondsGrab < targetMicroseconds) 
+        {
             usleep(targetMicroseconds - microsecondsGrab);
         }
     }
 
-    if (refreshDimsOnEachFrame) {
+    if (refreshDimsOnEachFrame) 
+     {
         dataAsImage.width  = 0;
         dataAsImage.height = 0;
     }
