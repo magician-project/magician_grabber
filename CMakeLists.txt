@@ -24,8 +24,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(ARAVIS REQUIRED aravis-0.10)
 
 
-set(SRC 
-ros_magician_grabber.cpp 
+set(SRC
+ros_magician_grabber.cpp
 arduinoSensor.c
 atiForceSensor.c
 gigeCameraSensor.c
@@ -33,6 +33,7 @@ sharedMemoryVideoBuffers.c
 imageStreamer.c
 tactileFeatures.c
 tactileStreamer.c
+codecs/pngInput.c
 )
 
 set(TACTILE_SRC 
@@ -44,7 +45,7 @@ ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)
 
 #target_compile_definitions(magician_grabber PRIVATE TACTILE TACTILE_LIBRARY)
 target_include_directories(magician_grabber PRIVATE ${ARAVIS_INCLUDE_DIRS})
-target_link_libraries(magician_grabber ${ARAVIS_LIBRARIES} pthread m) #fftw3 
+target_link_libraries(magician_grabber ${ARAVIS_LIBRARIES} pthread m png) #fftw3
 
 
 # =====================

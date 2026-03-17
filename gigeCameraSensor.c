@@ -16,6 +16,10 @@
 #include "gigeCameraSensor.h"
 #include "imageStreamer.h"
 
+/* Forward-declare WritePNG to avoid pulling in codecs/image.h which
+   redefines struct Image already defined in imageStreamer.h */
+int WritePNG(const char *filename, struct Image *pic);
+
 volatile sig_atomic_t termination_requested = 0;
 
 void sigterm_handler(int signum)
@@ -729,8 +733,13 @@ while (*config->keep_running && !termination_requested)
     if (enabledFileOutput)     {
                                 fprintf(config->csv_file, "%lu,", GetTickCountMicroseconds());
                                 fprintf(config->csv_file, "%u\n", frameNumber);
-                                snprintf(filename, 1024, "%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
-                                WritePPMG(filename, &dataAsImage);
+                                if (cfg->compress) {
+                                    snprintf(filename, 1024, "%.512s/colorFrame_0_%05u.png", cfg->outputDirectory, frameNumber);
+                                    WritePNG(filename, &dataAsImage);
+                                } else {
+                                    snprintf(filename, 1024, "%.512s/colorFrame_0_%05u.pnm", cfg->outputDirectory, frameNumber);
+                                    WritePPMG(filename, &dataAsImage);
+                                }
                                }
 
     // Update counters
