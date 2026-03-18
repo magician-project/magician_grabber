@@ -19,8 +19,15 @@ else
   cd ..
 fi
 
-cp SharedMemoryVideoBuffers/src/c/sharedMemoryVideoBuffers.c
-cp SharedMemoryVideoBuffers/src/c/sharedMemoryVideoBuffers.h
-cp SharedMemoryVideoBuffers/src/python/SharedMemoryManager.py
+
+
+if [ -f SharedMemoryVideoBuffers/README.md ]
+then
+  cp SharedMemoryVideoBuffers/src/c/sharedMemoryVideoBuffers.c ./
+  cp SharedMemoryVideoBuffers/src/c/sharedMemoryVideoBuffers.h ./
+  cp SharedMemoryVideoBuffers/src/python/SharedMemoryManager.py ./
+else
+  echo "Failed updating shared memory code"
+fi
 
 exit 0

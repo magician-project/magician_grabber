@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #define NORMAL   "\033[0m"
 #define BLACK   "\033[30m"      /* Black */
@@ -85,7 +86,7 @@ int writePNM(const char * filename,int width,int height,int channels, unsigned c
     //fprintf(stderr,"saveRawImageToFile(%s) called\n",filename);
     if (filename==0) { return 0; }
 
-    if(data==0) { debug_message("saveRawImageToFile(%s) called for an unallocated (empty) frame , will not write any file output\n",filename); return 0; }
+    if(data==0) { fprintf(stderr,"saveRawImageToFile(%s) called for an unallocated (empty) frame , will not write any file output\n",filename); return 0; }
 
     FILE *fd=0;
     fd = fopen(filename,"wb");
@@ -97,7 +98,7 @@ int writePNM(const char * filename,int width,int height,int channels, unsigned c
         else if (channels==1) fprintf(fd, "P5\n");
         else
         {
-            debug_message("Invalid channels arg (%u) for SaveRawImageToFile\n",channels);
+            fprintf(stderr,"Invalid channels arg (%u) for SaveRawImageToFile\n",channels);
             fclose(fd);
             return 1;
         }
@@ -115,7 +116,7 @@ int writePNM(const char * filename,int width,int height,int channels, unsigned c
     }
     else
     {
-        debug_message("SaveRawImageToFile could not open output file %s\n",filename);
+        fprintf(stderr,"SaveRawImageToFile could not open output file %s\n",filename);
         return 0;
     }
     return 0;
@@ -201,7 +202,7 @@ int unmapLocalMappingItem(struct VideoFrameLocalMapping * localmap,unsigned int 
      {
       if ( (localmap->data[item]!=0) && (localmap->sz[item]!=0) )
        {
-        debug_message("Unmapping memory for item %u\n",item);
+        fprintf(stderr,"Unmapping memory for item %u\n",item);
         munmap(localmap->data[item],localmap->sz[item]);
         localmap->sz[item]   = 0;
         localmap->data[item] = 0;
@@ -237,11 +238,11 @@ void copy_to_shared_memory(struct VideoFrame *frame, const void* src, size_t n)
         {
            if (frame->frame_size >= n)
            {
-             debug_message("Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
+             fprintf(stderr,"Will copy %lu bytes to stream %s, pointing @ %p\n",n,frame->name,frame->client_address_space_data_pointer);
              memcpy(frame->client_address_space_data_pointer,src, n);
-           }
-        }
-    }
+           } else { fprintf(stderr,"copy_to_shared_memory: Will not overflow target \n"); }
+        } else { fprintf(stderr,"copy_to_shared_memory: No client address space data pointer \n"); }
+    } else { fprintf(stderr,"copy_to_shared_memory: No Target VideoFrame our valid source \n"); }
 }
 
 int getSharedMemoryContextMAXBuffers()
@@ -276,7 +277,7 @@ int remoteSharedMemoryContextVideoFrameIsPopulated(struct SharedMemoryContext *c
   {
     if ( context->numberOfBuffers > item)
     {
-     return (context->buffer[item].client_address_space_data_pointer!=NULL);
+     return context->buffer[item].is_populated;
     }
   }
   return 0;
@@ -322,8 +323,6 @@ int createSharedMemoryContextDescriptor(const char *path)
     }
 
     // Initialize the shared memory context
-    context->numberOfBuffers = 0;
-
     memset(context, 0, total_size);
     printSharedMemoryContextState(context);
     munmap(context, total_size);
@@ -365,7 +364,8 @@ int create_frame_shared_memory(struct VideoFrame *frame)
         return -1;
     }
 
-    frame->locked = 0;  // Initialize the lock to 0
+    frame->locked = 0;       // Initialize the lock to 0
+    frame->is_populated = 1; // Mark frame as populated
     close(shm_fd);
     return 0;
 }
@@ -374,8 +374,8 @@ int create_frame_shared_memory(struct VideoFrame *frame)
 unsigned char * map_frame_shared_memory(struct VideoFrame *frame,int copyToVideoFramePointer)
 {
     unsigned char * result = NULL;
+    if (frame==0) { fprintf(stderr,"error: map_frame_shared_memory called without a valid video frame!\n"); return NULL; }
     fprintf(stderr,"MMAP shared memory for %s , size %lu\n",frame->name,frame->frame_size);
-    if (frame==0)    { return NULL; }
 
     int shm_fd = shm_open(frame->name, O_RDWR, 0666);
     if (shm_fd  == -1)
@@ -481,7 +481,7 @@ int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * st
       int contextID = -1;
       for (unsigned int i=0; i<context->numberOfBuffers; i++)
       {
-         if (strcmp(streamName,context->buffer[i].name)==0)
+         if (strncmp(streamName,context->buffer[i].name,MAX_SHM_NAME)==0)
          {
            fprintf(stderr,"Stream already exists\n");
            contextID = i;
@@ -490,6 +490,11 @@ int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * st
 
       if (contextID==-1)
       {
+         if (context->numberOfBuffers >= MAX_NUMBER_OF_BUFFERS)
+         {
+             fprintf(stderr,"createVideoFrameMetaData: maximum number of buffers (%u) reached\n", MAX_NUMBER_OF_BUFFERS);
+             return EXIT_FAILURE;
+         }
          fprintf(stderr,"Creating new stream %s\n",streamName);
          contextID = context->numberOfBuffers++;
       }
@@ -499,7 +504,20 @@ int createVideoFrameMetaData(struct SharedMemoryContext* context,const char * st
     newBuffer->width      = width;
     newBuffer->height     = height;
     newBuffer->channels   = channels;
-    newBuffer->frame_size = newBuffer->width * newBuffer->height * newBuffer->channels;
+
+    // Check for multiplication overflow before computing frame_size
+    if (newBuffer->height != 0 && newBuffer->width > (SIZE_MAX / newBuffer->height))
+    {
+        fprintf(stderr,"createVideoFrameMetaData: width*height would overflow\n");
+        return EXIT_FAILURE;
+    }
+    size_t wh = (size_t)newBuffer->width * newBuffer->height;
+    if (newBuffer->channels != 0 && wh > (SIZE_MAX / newBuffer->channels))
+    {
+        fprintf(stderr,"createVideoFrameMetaData: width*height*channels would overflow\n");
+        return EXIT_FAILURE;
+    }
+    newBuffer->frame_size = wh * newBuffer->channels;
 
     if (create_frame_shared_memory(newBuffer) == 0)
     {
@@ -522,7 +540,7 @@ int createGenericMetaData(struct SharedMemoryContext* context,const char * strea
       int contextID = -1;
       for (unsigned int i=0; i<context->numberOfBuffers; i++)
       {
-         if (strcmp(streamName,context->buffer[i].name)==0)
+         if (strncmp(streamName,context->buffer[i].name,MAX_SHM_NAME)==0)
          {
            fprintf(stderr,"Stream already exists\n");
            contextID = i;
@@ -531,6 +549,11 @@ int createGenericMetaData(struct SharedMemoryContext* context,const char * strea
 
       if (contextID==-1)
       {
+         if (context->numberOfBuffers >= MAX_NUMBER_OF_BUFFERS)
+         {
+             fprintf(stderr,"createGenericMetaData: maximum number of buffers (%u) reached\n", MAX_NUMBER_OF_BUFFERS);
+             return EXIT_FAILURE;
+         }
          fprintf(stderr,"Creating new stream %s\n",streamName);
          contextID = context->numberOfBuffers++;
       }
@@ -561,7 +584,7 @@ int destroyVideoFrame(struct SharedMemoryContext* context, const char *streamNam
     int index = -1;
     for (unsigned int i = 0; i < context->numberOfBuffers; i++)
     {
-        if (strcmp(context->buffer[i].name, streamName) == 0)
+        if (strncmp(context->buffer[i].name, streamName, MAX_SHM_NAME) == 0)
         {
             index = i;
             break;
@@ -603,8 +626,9 @@ int destroyVideoFrame(struct SharedMemoryContext* context, const char *streamNam
     context->numberOfBuffers--;
     fprintf(stderr, "Stream %s destroyed\n", streamName);
 
+    // Zero out the now-unused last slot (not 'frame', which was shifted over)
     fprintf(stderr, "Final cleanup of %s\n",streamName);
-    memset(frame,0,sizeof(struct VideoFrame));
+    memset(&context->buffer[context->numberOfBuffers], 0, sizeof(struct VideoFrame));
     fprintf(stderr, "Done with %s\n",streamName);
 
 
@@ -628,7 +652,7 @@ struct SharedMemoryContext* connectToSharedMemoryContextDescriptor(const char *p
     struct SharedMemoryContext *context = (struct SharedMemoryContext*) mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     if (context == MAP_FAILED)
     {
-        debug_message(RED "mmap failed\n" NORMAL);
+        debug_message(RED "mmap\n" NORMAL);
         //perror("mmap");
         close(shm_fd);
         return NULL;
@@ -682,29 +706,24 @@ int stopWritingToVideoBufferPointer(struct VideoFrame *vf)
 }
 
 // Start reading from a video buffer
+// Readers do not acquire an exclusive lock — they only proceed if no writer holds it.
+// This allows multiple concurrent readers without blocking each other.
 int startReadingFromVideoBufferPointer(struct VideoFrame *vf)
 {
-    return startWritingToVideoBufferPointer(vf);
-    /*
     if (vf==0) { return 0; }
-    fprintf(stderr,"startReadingFromVideoBufferPointer :");
+    debug_message("startReadingFromVideoBufferPointer :");
     if (__sync_fetch_and_add(&vf->locked, 0))
     {
-        fprintf(stderr,RED "failed\n" NORMAL);
-        return 0; // Buffer is locked
+        debug_message(RED "failed\n" NORMAL);
+        return 0; // Buffer is locked by a writer
     }
-    fprintf(stderr,GREEN "success\n" NORMAL);
-    return 1;*/
+    debug_message(GREEN "success\n" NORMAL);
+    return 1;
 }
 
-// Stop reading from a video buffer
+// Stop reading from a video buffer (no-op — readers do not hold the lock)
 int stopReadingFromVideoBufferPointer(struct VideoFrame *vf)
 {
-    return stopWritingToVideoBufferPointer(vf);
-    /*
-    fprintf(stderr,"stopWritingToVideoBufferPointer :");
-    if (vf==0) { return 0; }
-    // No-op for readers
-    fprintf(stderr,GREEN "success\n" NORMAL);
-    return 1;*/
+    (void)vf;
+    return 1;
 }
