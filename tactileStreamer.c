@@ -89,7 +89,7 @@ int stream_tactile(struct VideoFrame *frame, struct TactileBuffer* data)
 
     if (startWritingToVideoBufferPointer(frame))
     {
-        copy_to_shared_memory(frame, data->data ,data->data_size);
+        copy_to_shared_memory(frame, data->data ,data->data_size,(unsigned long) time(NULL));
         stopWritingToVideoBufferPointer(frame);
         return 1;
     } else

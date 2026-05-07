@@ -228,11 +228,11 @@ int writeSettings(const char * filename,struct Settings * settings)
         fprintf(fp,"\"blackLevel\": %f,\n",settings->blackLevel);
         fprintf(fp,"\"gain\": %f,\n",settings->gain);
         if (settings->tickCommand!=0)
-          { 
-             fprintf(fp,"\"frameRate\": %f,\n",settings->frameRate); 
-             fprintf(fp,"\"tickCommand\": \"%s\"\n}\n",settings->tickCommand); 
+          {
+             fprintf(fp,"\"frameRate\": %f,\n",settings->frameRate);
+             fprintf(fp,"\"tickCommand\": \"%s\"\n}\n",settings->tickCommand);
           } else
-          { 
+          {
              fprintf(fp,"\"frameRate\": %f }\n",settings->frameRate);
           }
         fclose(fp);
@@ -319,7 +319,7 @@ unsigned long getSleepTimeBasedOnFramerate(double frameRate)
 int gigecamera_startStream(GiGECameraConfig * context)
 {
     fprintf(stderr,"Starting camera stream");
-     
+
     gigecamera_print_udp_os_guidance();
 
     // Set up SIGTERM signal handler
@@ -608,7 +608,7 @@ void *gigecamera_thread(void *arg)
     char filename[2048]= {0};
     unsigned int frameNumber = 0;
     unsigned int brokenFrameNumber = 0;
- 
+
     struct Image dataAsImage= {0};
     dataAsImage.width  = config->width;
     dataAsImage.height = config->height;
@@ -638,7 +638,7 @@ while (*config->keep_running && !termination_requested)
     // Timeout is in microseconds in Aravis; pick something near frame period.
     buffer = arv_stream_timeout_pop_buffer(stream, 20000); // 20ms
 
-    if (!ARV_IS_BUFFER(buffer)) 
+    if (!ARV_IS_BUFFER(buffer))
     {
         brokenFrameNumber++;
         lastFrameIsBroken=1;
@@ -651,7 +651,7 @@ while (*config->keep_running && !termination_requested)
 
     // 1) CRITICAL: Always check status first. UDP loss/incomplete frames show up here.
     ArvBufferStatus st = arv_buffer_get_status(buffer);
-    if (st != ARV_BUFFER_STATUS_SUCCESS) 
+    if (st != ARV_BUFFER_STATUS_SUCCESS)
     {
         brokenFrameNumber++;
         lastFrameIsBroken=1;
@@ -680,13 +680,13 @@ while (*config->keep_running && !termination_requested)
     }
 
     // 2) Get dimensions/data only for SUCCESS buffers
-    if (refreshDimsOnEachFrame || dataAsImage.width == 0 || dataAsImage.height == 0) 
+    if (refreshDimsOnEachFrame || dataAsImage.width == 0 || dataAsImage.height == 0)
     {
         dataAsImage.width  = (unsigned int) arv_buffer_get_image_width(buffer);
         dataAsImage.height = (unsigned int) arv_buffer_get_image_height(buffer);
     }
 
-    if (dataAsImage.width == 0 || dataAsImage.height == 0) 
+    if (dataAsImage.width == 0 || dataAsImage.height == 0)
     {
         brokenFrameNumber++;
         lastFrameIsBroken=1;
@@ -697,7 +697,7 @@ while (*config->keep_running && !termination_requested)
     size_t size = 0;
     data = arv_buffer_get_image_data(buffer, &size);
 
-    if (data == NULL || size == 0) 
+    if (data == NULL || size == 0)
     {
         brokenFrameNumber++;
         lastFrameIsBroken=1;
@@ -716,7 +716,7 @@ while (*config->keep_running && !termination_requested)
     // If your downstream expects exact width*height, keep that, but ensure it matches `size`.
     dataAsImage.image_size = (unsigned int)size;
 
-    dataAsImage.timestamp = (unsigned int)(GetTickCountMicroseconds() / 1000ULL);
+    dataAsImage.timestamp = (unsigned long) time(NULL); //(unsigned int)(GetTickCountMicroseconds() / 1000ULL);
 
     // Stats + computed fps
     unsigned long endTime = GetTickCountMicroseconds();
@@ -752,17 +752,17 @@ while (*config->keep_running && !termination_requested)
     endGrab = GetTickCountMicroseconds();
 
     // 4) Optional pacing (if you truly need to limit CPU/bandwidth).
-    if (config->frameRate > 0.0) 
+    if (config->frameRate > 0.0)
     {
         unsigned long microsecondsGrab   = endGrab - startGrab;
         unsigned long targetMicroseconds = (unsigned long)(1000000.0 / config->frameRate);
-        if (microsecondsGrab < targetMicroseconds) 
+        if (microsecondsGrab < targetMicroseconds)
         {
             usleep(targetMicroseconds - microsecondsGrab);
         }
     }
 
-    if (refreshDimsOnEachFrame) 
+    if (refreshDimsOnEachFrame)
      {
         dataAsImage.width  = 0;
         dataAsImage.height = 0;
@@ -804,7 +804,7 @@ while (*config->keep_running && !termination_requested)
                             dataAsImage.image_size   = dataAsImage.width  * dataAsImage.height * dataAsImage.channels;
                             dataAsImage.timestamp    = (unsigned int) GetTickCountMicroseconds() / 1000;
 
-                            // Display some informations about the retrieved buffer 
+                            // Display some informations about the retrieved buffer
                             //printf ("Acquired %d×%d buffer\n",dataAsImage.width,dataAsImage.height);
                             unsigned long endTime = GetTickCountMicroseconds();
 
@@ -816,7 +816,7 @@ while (*config->keep_running && !termination_requested)
 
                             if (shm_stream!=NULL)
                                        { stream_image(shm_stream->frame,&dataAsImage); }
-                            
+
                             if (config->callback!=0)
                                        { camera_callback_relay(config, startGrab, &dataAsImage); }
 
@@ -861,7 +861,7 @@ while (*config->keep_running && !termination_requested)
                         }
                     }//We have a framerate set
                    //usleep(10);
-                  
+
                    if (refreshDimsOnEachFrame)
                         {   //Since we are resetting dims
                             //lets put them to zero
