@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(rclcpp_magician_grabber)
+enable_language(CXX)
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
@@ -36,6 +37,8 @@ tactileStreamer.c
 codecs/pngInput.c
 )
 
+set_source_files_properties(ros_magician_grabber.cpp PROPERTIES LANGUAGE CXX)
+
 set(TACTILE_SRC 
 tactile_processor/TactileProcessor.cpp
 )
@@ -43,10 +46,9 @@ tactile_processor/TactileProcessor.cpp
 add_executable(magician_grabber ${SRC} ) #${TACTILE_SRC} 
 
 #target_compile_definitions(magician_grabber PRIVATE TACTILE TACTILE_LIBRARY)
+ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)
 target_include_directories(magician_grabber PRIVATE ${ARAVIS_INCLUDE_DIRS})
 target_link_libraries(magician_grabber ${ARAVIS_LIBRARIES} pthread m png) #fftw3
-ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)
-
 
 # =====================
 # Shared library build
