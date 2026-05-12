@@ -46,7 +46,7 @@ tactile_processor/TactileProcessor.cpp
 add_executable(magician_grabber ${SRC} ) #${TACTILE_SRC} 
 
 #target_compile_definitions(magician_grabber PRIVATE TACTILE TACTILE_LIBRARY)
-ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)
+#ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)
 target_include_directories(magician_grabber PRIVATE ${ARAVIS_INCLUDE_DIRS})
 target_link_libraries(magician_grabber ${ARAVIS_LIBRARIES} pthread m png) #fftw3
 

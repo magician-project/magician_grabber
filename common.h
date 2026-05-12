@@ -362,6 +362,8 @@ static void printHz(float Hz)
 
 static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
 {
+    int I_Know_What_I_Am_Doing = 0;
+
     //Parse command line arguments
     for (int i=0; i<argc; i++)
     {
@@ -468,11 +470,16 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
             cfg->height = atoi(argv[i+2]);
             fprintf(stderr,"Camera size set to %u x %u pixels \n",cfg->width,cfg->height);
         }
+        else if (strcmp(argv[i],"--I_know_what_I_am_doing")==0)
+        {
+            I_Know_What_I_Am_Doing = 1;
+            fprintf(stderr," USER EXPLICITLY STATED HE KNOWS WHAT HE IS DOING\n");
+        }
         else if (strcmp(argv[i],"--exposure")==0)
         {
             cfg->exposure=atoi(argv[i+1]);
-            if (cfg->exposure>MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS)
-            {
+            if ( (cfg->exposure>MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS) && (!I_Know_What_I_Am_Doing) )
+            {  
               fprintf(stderr,"Not allowing exposure to be set to more than %u μsec \n",MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS);
               cfg->exposure = MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS;
             }
