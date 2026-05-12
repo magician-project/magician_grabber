@@ -716,7 +716,7 @@ while (*config->keep_running && !termination_requested)
     // If your downstream expects exact width*height, keep that, but ensure it matches `size`.
     dataAsImage.image_size = (unsigned int)size;
 
-    dataAsImage.timestamp = (unsigned long) time(NULL); //(unsigned int)(GetTickCountMicroseconds() / 1000ULL);
+    { struct timespec _ts; clock_gettime(CLOCK_REALTIME, &_ts); dataAsImage.timestamp = (unsigned long)_ts.tv_sec * 1000000000UL + (unsigned long)_ts.tv_nsec; }
 
     // Stats + computed fps
     unsigned long endTime = GetTickCountMicroseconds();
