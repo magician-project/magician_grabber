@@ -32,6 +32,24 @@ import numpy as np
 #    sys.path.insert(0, _READ_DATA_DIR)
 #from readData import readPolarPNMToRGBALive
 
+def debayerPolarImage(image):
+    """
+    De-bayer a polarization image into 4 separate monochrome channels.
+
+    Extracts the 0°, 45°, 90°, and 135° polarization channels from a Bayer-like
+    pattern. The input is expected to be a 2D array with alternating polarization
+    filters in a 2x2 mosaic pattern.
+
+    Returns:
+        (polarization_0_deg, polarization_45_deg, polarization_90_deg, polarization_135_deg)
+    """
+    polarization_90_deg  = image[0::2, 0::2]
+    polarization_45_deg  = image[0::2, 1::2]
+    polarization_135_deg = image[1::2, 0::2]
+    polarization_0_deg   = image[1::2, 1::2]
+    return polarization_0_deg, polarization_45_deg, polarization_90_deg, polarization_135_deg
+
+
 def readPolarPNMToRGBALive(image):
     """
     Convert a debayered polarization PNM image to a 4-channel RGBA array.

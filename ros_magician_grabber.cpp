@@ -408,6 +408,8 @@ int main(int argc, char **argv)
     cfg.useCamera    = 1;
     cfg.useATIForce  = 0;
     cfg.streamData   = 1;
+    snprintf(cfg.atiIP,128,"192.168.137.201");
+    cfg.atiPort = 49152;
 
     #if TACTILE
     cfg.calculateTactileFeatures    = 0;
@@ -477,6 +479,12 @@ int main(int argc, char **argv)
     //snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
     //snprintf(arduino_config.port_name,128,"%s",cfg.arduinoPath);
     fprintf(stderr,"Arduino : %s \n",arduino_config.port_name);
+
+    //Copy ATI IP/port from cfg
+    snprintf(atinetft_config.ip_address,128,"%s",cfg.atiIP);
+    atinetft_config.port = cfg.atiPort;
+    if (cfg.useATIForce)
+    { fprintf(stderr,"ATI NetFT address : %s:%d\n",atinetft_config.ip_address,atinetft_config.port); }
 
 
     //Make arduino_cfg visible!

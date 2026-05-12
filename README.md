@@ -132,7 +132,13 @@ To add tactile feature processing use the magician_grabber_tactile binary:
 
 To stream tactile data to shared memory:
 ```
-./magician_grabber_tactile --stream --accelerometer --force --nocamera --noarduino
+./magician_grabber_tactile --stream --accelerometer --force --nocamera --noarduino --atiip 192.168.1.1
+```
+
+
+To stream tactile data (ATI/Teensy) to other ROS nodes:
+```
+build/rclcpp_magician_grabber/magician_grabber --stream --accelerometer --force --nocamera --noarduino --atiip 192.168.1.1
 ```
 
 

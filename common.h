@@ -80,6 +80,8 @@ typedef struct
 
     char arduinoPath[128];
     char teensyPath[128];
+    char atiIP[128];
+    int  atiPort;
 
     #if TACTILE
     char calculateTactileFeatures;
@@ -334,6 +336,8 @@ static void print_help()
     printf("  --forever                 Run indefinitely.\n");
     printf("  --camera                  Enable the camera.\n");
     printf("  --force                   Enable force sensor.\n");
+    printf("  --atiip <ip>              Set ATI NetFT sensor IP address.\n");
+    printf("  --atiport <port>          Set ATI NetFT sensor port.\n");
     printf("  --features                Enable force sensor features calculation.\n");
     printf("  --accelerometer           Enable accelerometer (Teensy device).\n");
     printf("  --distance                Enable distance sensor (Arduino device).\n");
@@ -541,6 +545,26 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->useATIForce = 1;
             fprintf(stderr,"Activating Force\n");
+        }
+        else if (strcmp(argv[i],"--atiip")==0)
+        {
+            if (argc>i+1)
+            {
+              snprintf(cfg->atiIP,128,"%s",argv[i+1]);
+              fprintf(stderr,"ATI IP set to %s\n",cfg->atiIP);
+            }
+            else
+            { fprintf(stderr,"Failed setting ATI IP, not enough arguments!\n"); }
+        }
+        else if (strcmp(argv[i],"--atiport")==0)
+        {
+            if (argc>i+1)
+            {
+              cfg->atiPort = atoi(argv[i+1]);
+              fprintf(stderr,"ATI port set to %d\n",cfg->atiPort);
+            }
+            else
+            { fprintf(stderr,"Failed setting ATI port, not enough arguments!\n"); }
         }
         else if (strcmp(argv[i],"--features")==0)
         {

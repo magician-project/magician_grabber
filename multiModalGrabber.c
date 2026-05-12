@@ -142,6 +142,8 @@ int main (int argc, char **argv)
     cfg.useCamera    = 0;
     cfg.useATIForce  = 0;
     cfg.streamData = 0;
+    snprintf(cfg.atiIP,128,"127.0.0.1");
+    cfg.atiPort = 49152;
 
     #if TACTILE
     cfg.calculateTactileFeatures    = 0;
@@ -222,6 +224,12 @@ int main (int argc, char **argv)
     //Copy teensy/arduino port
     snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
     snprintf(arduino_config.port_name,128,"%s",cfg.arduinoPath);
+
+    //Copy ATI IP/port from cfg
+    snprintf(atinetft_config.ip_address,128,"%s",cfg.atiIP);
+    atinetft_config.port = cfg.atiPort;
+    if (cfg.useATIForce)
+    { fprintf(stderr,"ATI NetFT address : %s:%d\n",atinetft_config.ip_address,atinetft_config.port); }
 
     //Try to make arduino wake up correctly
     //system("stty -F /dev/ttyACM0 115200 raw -echo");
