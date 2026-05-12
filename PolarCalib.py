@@ -27,10 +27,41 @@ import cv2
 import numpy as np
 
 # --- locate readData.py -------------------------------------------------------
-_READ_DATA_DIR = '/home/ammar/Documents/Programming/magician_vision_classifier'
-if _READ_DATA_DIR not in sys.path:
-    sys.path.insert(0, _READ_DATA_DIR)
-from readData import readPolarPNMToRGBALive
+#_READ_DATA_DIR = '/home/ammar/Documents/Programming/magician_vision_classifier'
+#if _READ_DATA_DIR not in sys.path:
+#    sys.path.insert(0, _READ_DATA_DIR)
+#from readData import readPolarPNMToRGBALive
+
+def readPolarPNMToRGBALive(image):
+    """
+    Convert a debayered polarization PNM image to a 4-channel RGBA array.
+
+    De-bayers the input (expects 2D array), then assembles the 4 polarization
+    channels (0°, 45°, 90°, 135°) into an (H/2, W/2, 4) uint8 array.
+    """
+    image = np.squeeze(image)
+
+    # If already 4-channel (pre-debayered), return as-is
+    if image.ndim == 3 and image.shape[2] == 4:
+        return image
+
+    #This expects a 1 channel (bayered) image
+    height, width = image.shape
+
+    # Split into polarization images
+    polarization_0_deg, polarization_45_deg, polarization_90_deg, polarization_135_deg = debayerPolarImage(image)
+
+    # Create an RGBA image
+    rgba_image = np.zeros((int(height/2),int(width/2), 4), dtype=np.uint8)
+
+    # Assign each polarization image to a specific channel
+    rgba_image[:, :, 0] = polarization_0_deg
+    rgba_image[:, :, 1] = polarization_45_deg
+    rgba_image[:, :, 2] = polarization_90_deg
+    rgba_image[:, :, 3] = polarization_135_deg
+
+    return rgba_image
+
 
 # --- calibration board parameters --------------------------------------------
 BOARD_W   = 9    # inner corners along width
