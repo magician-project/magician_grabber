@@ -131,6 +131,151 @@ def save_stereolabs_calib(out_path, width, height, intrinsic_matrix, dist_coeffs
 
 
 # -----------------------------------------------------------------------------
+# 2-D pixel → 3-D world point
+# -----------------------------------------------------------------------------
+
+def pixel_to_3d(
+    u, v,
+    K,
+    dist,
+    R_cam2gripper,
+    t_cam2gripper,
+    R_gripper2base,
+    t_gripper2base,
+    T_mesh2world,
+    plane_normal_mesh=None,
+    plane_origin_mesh=None,
+):
+    """
+    Back-project a detected pixel (u, v) to a 3D world-frame point by
+    intersecting the camera ray with a known plane on the observed mesh.
+
+    A single pixel defines only a ray, not a unique 3D point.  The extra
+    constraint used here is that the detected feature lies on a plane of
+    the mesh whose pose in the world frame is known.  By default the plane
+    is the mesh's local XY plane (Z = 0, normal = +Z).
+
+    Coordinate frames and units
+    ---------------------------
+    All translations are in the same unit as the calibration (millimetres
+    for this project).  Rotations are 3×3 matrices.
+
+    Transform chain
+    ---------------
+    camera → gripper  :  R_cam2gripper, t_cam2gripper      (hand-eye result)
+    gripper → world   :  R_gripper2base, t_gripper2base    (Doosan TCP pose,
+                          built from ZYZ Euler angles — NOT roll-pitch-yaw,
+                          see load_robot_pose())
+    mesh → world      :  T_mesh2world (4×4 homogeneous)
+
+    Parameters
+    ----------
+    u, v               : float    – pixel coordinates of the detected point
+    K                  : (3,3)   – camera intrinsic matrix
+    dist               : array   – distortion coefficients (OpenCV order)
+    R_cam2gripper      : (3,3)   – rotation:    camera frame  → gripper frame
+    t_cam2gripper      : (3,1)   – translation: camera origin in gripper frame
+    R_gripper2base     : (3,3)   – rotation:    gripper frame → world frame
+                                   (Doosan H2515/CS-01 — ZYZ Euler convention)
+    t_gripper2base     : (3,1)   – translation: gripper origin in world frame
+    T_mesh2world       : (4,4)   – homogeneous transform: mesh frame → world frame
+    plane_normal_mesh  : (3,)    – plane normal in mesh frame  (default: +Z = [0,0,1])
+    plane_origin_mesh  : (3,)    – a point on the plane in mesh frame
+                                   (default: mesh origin [0,0,0])
+
+    Returns
+    -------
+    pt_world  : (3,) ndarray – 3-D intersection point in world frame (mm)
+    pt_mesh   : (3,) ndarray – same point in mesh frame (mm)
+    ray_t     : float        – ray parameter; positive = in front of camera
+
+    Raises
+    ------
+    ValueError if the ray is parallel to the plane or the intersection is
+    behind the camera.
+    """
+    if plane_normal_mesh is None:
+        plane_normal_mesh = np.array([0.0, 0.0, 1.0])
+    if plane_origin_mesh is None:
+        plane_origin_mesh = np.array([0.0, 0.0, 0.0])
+
+    K    = np.asarray(K,    dtype=np.float64)
+    dist = np.asarray(dist, dtype=np.float64)
+    R_cam2gripper  = np.asarray(R_cam2gripper,  dtype=np.float64)
+    t_cam2gripper  = np.asarray(t_cam2gripper,  dtype=np.float64).reshape(3)
+    R_gripper2base = np.asarray(R_gripper2base, dtype=np.float64)
+    t_gripper2base = np.asarray(t_gripper2base, dtype=np.float64).reshape(3)
+    T_mesh2world   = np.asarray(T_mesh2world,   dtype=np.float64).reshape(4, 4)
+    n_mesh = np.asarray(plane_normal_mesh, dtype=np.float64)
+    p_mesh = np.asarray(plane_origin_mesh, dtype=np.float64)
+
+    # ------------------------------------------------------------------
+    # Step 1 – undistort pixel and form normalised camera-frame ray
+    #
+    # cv2.undistortPoints removes lens distortion AND divides out K,
+    # returning coordinates in the normalised camera plane (z = 1).
+    # ------------------------------------------------------------------
+    pt_distorted = np.array([[[u, v]]], dtype=np.float64)
+    pt_norm = cv2.undistortPoints(pt_distorted, K, dist)   # → (1,1,2) normalised
+    x_n, y_n = pt_norm[0, 0]
+    d_cam = np.array([x_n, y_n, 1.0])          # ray direction, camera frame
+
+    # ------------------------------------------------------------------
+    # Step 2 – camera pose in world frame
+    #
+    # T_cam2world = T_gripper2world @ T_cam2gripper
+    #   R_cam2world = R_gripper2base @ R_cam2gripper
+    #   t_cam2world = R_gripper2base @ t_cam2gripper + t_gripper2base
+    # ------------------------------------------------------------------
+    R_cam2world = R_gripper2base @ R_cam2gripper
+    t_cam2world = R_gripper2base @ t_cam2gripper + t_gripper2base
+
+    # Camera origin and ray direction in world frame
+    o_world = t_cam2world                        # camera origin (world)
+    d_world = R_cam2world @ d_cam                # ray direction (world), not yet unit
+    d_world = d_world / np.linalg.norm(d_world)
+
+    # ------------------------------------------------------------------
+    # Step 3 – transform mesh plane to world frame
+    # ------------------------------------------------------------------
+    R_mesh2world = T_mesh2world[:3, :3]
+    t_mesh2world = T_mesh2world[:3,  3]
+
+    n_world = R_mesh2world @ n_mesh              # plane normal in world
+    n_world = n_world / np.linalg.norm(n_world)
+    p_world = R_mesh2world @ p_mesh + t_mesh2world  # plane anchor in world
+
+    # ------------------------------------------------------------------
+    # Step 4 – ray / plane intersection
+    #
+    # Ray:   P(t) = o_world + t * d_world
+    # Plane: n_world · (P - p_world) = 0
+    # Solve: t = n_world · (p_world - o_world) / (n_world · d_world)
+    # ------------------------------------------------------------------
+    denom = n_world @ d_world
+    if abs(denom) < 1e-9:
+        raise ValueError(
+            "Camera ray is parallel to the mesh plane — cannot find intersection."
+        )
+
+    ray_t = (n_world @ (p_world - o_world)) / denom
+    if ray_t < 0:
+        raise ValueError(
+            f"Intersection is behind the camera (ray_t={ray_t:.3f})."
+        )
+
+    pt_world = o_world + ray_t * d_world
+
+    # ------------------------------------------------------------------
+    # Step 5 – express intersection in mesh frame (optional but useful)
+    # ------------------------------------------------------------------
+    R_world2mesh = R_mesh2world.T                # inverse rotation
+    pt_mesh = R_world2mesh @ (pt_world - t_mesh2world)
+
+    return pt_world, pt_mesh, ray_t
+
+
+# -----------------------------------------------------------------------------
 # Core calibration logic
 # -----------------------------------------------------------------------------
 
