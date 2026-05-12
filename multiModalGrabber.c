@@ -416,6 +416,7 @@ int main (int argc, char **argv)
                                printf("|ATI ");     printHz(atinetft_config.Hz); printf(NORMAL); }
          //-----------------------------------------------------------------------------------------------------------------
          printf("|   \r");
+         fflush(stdout);
         }
 
         if ( (!cfg.run_forever) && (currentTime-startTime > cfg.maxTimeToGrabForInSeconds * 1000000) )

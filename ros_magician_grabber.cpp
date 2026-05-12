@@ -629,33 +629,34 @@ int main(int argc, char **argv)
         unsigned long runningTimeInSeconds = (currentTime - startTime) / 1000000;
 
 
-        fprintf(stderr,"\r");
+        printf("\r");
         //-----------------------------------------------------------------------------------------------------------------
 
         if (cfg.streamData) { broadcasting(camera_config.framesCaptured); }
-        if (cfg.run_forever)  { fprintf(stderr,GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
+        if (cfg.run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
                           {
-                           fprintf(stderr,GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
+                           printf(GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
                            progress_bar(runningTimeInSeconds,cfg.maxTimeToGrabForInSeconds);
                           }
 
         if (cfg.useCamera)
             {
-             fprintf(stderr,"|Cam %lu %0.2fHz ",camera_config.framesCaptured, camera_config.actualFrameRate);
-             fprintf(stderr," Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
+             printf("|Cam %lu %0.2fHz ",camera_config.framesCaptured, camera_config.actualFrameRate);
+             printf(" Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
             }
 
-        if (cfg.useArduino)  { fprintf(stderr,"|Arduino %0.2fHz/%lu samples",arduino_config.Hz, arduino_config.receivedDataFrames ); }
-        if (cfg.useTeensy)   { fprintf(stderr,"|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
-        if (cfg.useATIForce) { fprintf(stderr,"|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
+        if (cfg.useArduino)  { printf("|Arduino %0.2fHz/%lu samples",arduino_config.Hz, arduino_config.receivedDataFrames ); }
+        if (cfg.useTeensy)   { printf("|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
+        if (cfg.useATIForce) { printf("|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
         //-----------------------------------------------------------------------------------------------------------------
-        fprintf(stderr,"|          \r");
+        printf("|          \r");
+        fflush(stdout);
 
 
 
         if ( (!cfg.run_forever) && (currentTime-startTime > cfg.maxTimeToGrabForInSeconds * 1000000) )
         {
-          fprintf(stderr,GREEN "\n\n\n\nSuccesfully Completed recording time..\n" NORMAL);
+          printf(GREEN "\n\n\n\nSuccesfully Completed recording time..\n" NORMAL);
           cfg.keep_running = 0;
           usleep(10000);
         }
