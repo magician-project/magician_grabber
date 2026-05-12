@@ -5,6 +5,12 @@ PolarCalib.py - Camera calibration from polarization PNM frames + Doosan robot p
 Each frame* directory contains:
   - colorFrame_0_*.pnm  : raw Bayer-polarization images (same robot pose)
   - robot_pose.csv      : one-row CSV with J1..J6, X,Y,Z,Rx,Ry,Rz
+                          IMPORTANT – Doosan H2515 / CS-01 controller encodes TCP
+                          orientation as ZYZ Euler angles (degrees), NOT roll-pitch-yaw:
+                            Rx → 1st Z rotation (rz1)
+                            Ry → Y  rotation    (ry)
+                            Rz → 2nd Z rotation (rz2)
+                          X,Y,Z translation is in millimetres.
   - camera.csv          : timestamp / frameID table
   - info.json           : capture settings
 
@@ -29,7 +35,7 @@ from readData import readPolarPNMToRGBALive
 # --- calibration board parameters --------------------------------------------
 BOARD_W   = 9    # inner corners along width
 BOARD_H   = 6    # inner corners along height
-BOARD_DIM = 21   # physical square size in mm
+BOARD_DIM = 11.5   # physical square size in mm
 CROP      = 0.5  # alpha for getOptimalNewCameraMatrix (0=tight, 1=all pixels)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,7 +65,13 @@ def load_robot_pose(csv_path):
     """
     Parse robot_pose.csv (single data row).
     Columns: J1,J2,J3,J4,J5,J6,X,Y,Z,Rx,Ry,Rz
-    Returns a dict with float values.
+
+    IMPORTANT – Doosan H2515 / CS-01 controller:
+      X,Y,Z  : TCP position in millimetres
+      Rx,Ry,Rz : ZYZ Euler angles in degrees (NOT roll-pitch-yaw)
+                 Rx = rz1 (first  Z), Ry = ry (Y), Rz = rz2 (second Z)
+
+    Returns a dict with float values keyed by the CSV column names.
     """
     with open(csv_path, newline='') as f:
         reader = csv.DictReader(f)
@@ -169,10 +181,11 @@ def collect_calibration_views(base_dir, board_w, board_h, board_dim, show=True):
         pose_csv = os.path.join(frame_dir, 'robot_pose.csv')
         robot_pose = load_robot_pose(pose_csv) if os.path.isfile(pose_csv) else {}
         if robot_pose:
-            print(f"  Robot TCP  X={robot_pose.get('X'):.2f}  Y={robot_pose.get('Y'):.2f}"
-                  f"  Z={robot_pose.get('Z'):.2f}  "
-                  f"Rx={robot_pose.get('Rx'):.2f}  Ry={robot_pose.get('Ry'):.2f}"
-                  f"  Rz={robot_pose.get('Rz'):.2f}")
+            # Rx/Ry/Rz are ZYZ Euler angles (degrees), not RPY — see load_robot_pose()
+            print(f"  Robot TCP  X={robot_pose.get('X'):.2f}mm  Y={robot_pose.get('Y'):.2f}mm"
+                  f"  Z={robot_pose.get('Z'):.2f}mm  "
+                  f"Rx(rz1)={robot_pose.get('Rx'):.2f}°  Ry(ry)={robot_pose.get('Ry'):.2f}°"
+                  f"  Rz(rz2)={robot_pose.get('Rz'):.2f}°")
             print(f"  Joints     J1={robot_pose.get('J1'):.2f}  J2={robot_pose.get('J2'):.2f}"
                   f"  J3={robot_pose.get('J3'):.2f}  J4={robot_pose.get('J4'):.2f}"
                   f"  J5={robot_pose.get('J5'):.2f}  J6={robot_pose.get('J6'):.2f}")
@@ -314,6 +327,7 @@ def run_calibration(base_dir=BASE_DIR, board_w=BOARD_W, board_h=BOARD_H,
 
     # --- save per-view pose CSV ----------------------------------------------
     poses_path = os.path.join(base_dir, 'calibration_poses.csv')
+    # Rx/Ry/Rz = ZYZ Euler angles (deg), NOT RPY — Doosan H2515/CS-01 convention
     pose_keys  = ['J1','J2','J3','J4','J5','J6','X','Y','Z','Rx','Ry','Rz']
     with open(poses_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -359,10 +373,15 @@ def run_calibration(base_dir=BASE_DIR, board_w=BOARD_W, board_h=BOARD_H,
         v = views[i]
         rp = v['robot_pose']
 
-        # Robot TCP pose: Doosan ZYZ Euler angles (degrees), translation in mm
-        rz1 = np.radians(rp['Rx'])  # first  Z rotation  (Doosan calls it Rx)
-        ry  = np.radians(rp['Ry'])  # middle Y rotation
-        rz2 = np.radians(rp['Rz'])  # final  Z rotation  (Doosan calls it Rz)
+        # Doosan H2515/CS-01 reports TCP orientation as ZYZ Euler angles in degrees.
+        # The column names Rx/Ry/Rz are misleading — they are NOT roll-pitch-yaw:
+        #   Rx → rz1  (first  rotation, about Z)
+        #   Ry → ry   (second rotation, about Y)
+        #   Rz → rz2  (third  rotation, about Z)
+        # Rotation matrix = Rz(rz1) @ Ry(ry) @ Rz(rz2)
+        rz1 = np.radians(rp['Rx'])  # 1st Z angle
+        ry  = np.radians(rp['Ry'])  # Y   angle
+        rz2 = np.radians(rp['Rz'])  # 2nd Z angle
 
         cz1, sz1 = np.cos(rz1), np.sin(rz1)
         cy,  sy  = np.cos(ry),  np.sin(ry)
