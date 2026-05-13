@@ -123,7 +123,7 @@ int ReadPNGMem(const char *mem, unsigned int memSize, struct Image *pic, char re
         return 0;
     }
 
-    for (int i = 0; i < temp_height; ++i) {
+    for (png_uint_32 i = 0; i < temp_height; ++i) {
         row_pointers[i] = image_data + i * rowbytes;
     }
 
@@ -154,7 +154,12 @@ int ReadPNG(const char *filename,struct Image * pic,char read_only_header)
     }
 
     // read the header
-    int res = fread(header, 1, 8, fp);
+    if (fread(header, 1, 8, fp) != 8)
+    {
+        fprintf(stderr, "error: %s is too short to be a PNG.\n", filename);
+        fclose(fp);
+        return 0;
+    }
 
     if (png_sig_cmp(header, 0, 8))
     {
@@ -253,7 +258,7 @@ int ReadPNG(const char *filename,struct Image * pic,char read_only_header)
     }
 
     // set the individual row_pointers to point at the correct offsets of image_data
-    int i;
+    png_uint_32 i;
     for (i = 0; i < temp_height; i++)
     {
 //  INVERT Y row_pointers[pic->height - 1 - i] = image_data + i * rowbytes;

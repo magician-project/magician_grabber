@@ -598,8 +598,8 @@ void *gigecamera_thread(void *arg)
     ArvStream *stream = (ArvStream *) config->stream;
 
     unsigned long startGrab, endGrab;
-    unsigned long microsecondsGrab;
-    unsigned long timeToSleepToWaitFor1Frame = getSleepTimeBasedOnFramerate(config->frameRate);
+    //unsigned long microsecondsGrab;
+    //unsigned long timeToSleepToWaitFor1Frame = getSleepTimeBasedOnFramerate(config->frameRate);
     ArvBuffer *buffer = NULL;
 
     char refreshDimsOnEachFrame = 1;
@@ -631,7 +631,7 @@ void *gigecamera_thread(void *arg)
 
 while (*config->keep_running && !termination_requested)
 {
-    char lastFrameIsBroken = 0;
+    //char lastFrameIsBroken = 0;
     startGrab = GetTickCountMicroseconds();
 
     // Prefer timeout_pop to avoid busy waiting.
@@ -641,7 +641,7 @@ while (*config->keep_running && !termination_requested)
     if (!ARV_IS_BUFFER(buffer))
     {
         brokenFrameNumber++;
-        lastFrameIsBroken=1;
+        //lastFrameIsBroken=1;
         // No buffer ready yet (or stream starving). Sleep a bit to reduce CPU.
         usleep(1000);
         continue;
@@ -654,7 +654,7 @@ while (*config->keep_running && !termination_requested)
     if (st != ARV_BUFFER_STATUS_SUCCESS)
     {
         brokenFrameNumber++;
-        lastFrameIsBroken=1;
+        //lastFrameIsBroken=1;
 
         // Optional: print occasional guidance when problems happen
         if ((brokenFrameNumber % 100) == 1) {
@@ -689,7 +689,7 @@ while (*config->keep_running && !termination_requested)
     if (dataAsImage.width == 0 || dataAsImage.height == 0)
     {
         brokenFrameNumber++;
-        lastFrameIsBroken=1;
+        //lastFrameIsBroken=1;
         arv_stream_push_buffer(stream, buffer);
         continue;
     }
@@ -700,7 +700,7 @@ while (*config->keep_running && !termination_requested)
     if (data == NULL || size == 0)
     {
         brokenFrameNumber++;
-        lastFrameIsBroken=1;
+        //lastFrameIsBroken=1;
         arv_stream_push_buffer(stream, buffer);
         continue;
     }
