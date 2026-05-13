@@ -77,6 +77,7 @@ StreamingTactileContext * startTactileStream(const char * shm_name, const char *
 
 int stopTactileStream(StreamingTactileContext * shm_stream)
 {
+    (void)shm_stream;
     return 0;
 }
 

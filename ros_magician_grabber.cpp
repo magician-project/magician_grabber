@@ -94,6 +94,7 @@ int noOutputDirectory(GlobalConfig *cfg)
 
 int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 {
+  (void)arduino_config;
   int processed = 0;
   switch (key)
   {
@@ -117,6 +118,7 @@ int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 //These is a callback that triggers the next light
 static int camera_callback_next_light(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
 {
+    (void)timestamp; (void)dataAsImage;
     if (config!=NULL)
     {
       if (config->global!=NULL)
@@ -331,6 +333,7 @@ std::shared_ptr<MagicianGrabber> global_node;
 // C-style callback function
 extern "C" int ros_force_callback(ATINetFTConfig *atinetft_config,double fX, double fY, double fZ, double tX, double tY, double tZ)
 {
+    (void)atinetft_config;
     if (global_node) 
     {
         //global_node->update_Forces(fX, fY, fZ);
@@ -343,6 +346,7 @@ extern "C" int ros_force_callback(ATINetFTConfig *atinetft_config,double fX, dou
 
 extern "C" int ros_accelerometer_callback(ArduinoSerialConfig *arduino_config, unsigned long timestamp, unsigned long dev_timestamp, double accX, double accY, double accZ)
 {
+    (void)arduino_config; (void)timestamp; (void)dev_timestamp;
     if (global_node) 
     {
         global_node->update_Accelerometer(accX, accY, accZ); 
@@ -355,6 +359,7 @@ extern "C" int ros_controller_callback(ArduinoSerialConfig *arduino_config,unsig
                                int D1,int D2, int D3,
                                int Light1,int Light2,int Light3,int Light4,int Light5,int Light6)
 {
+    (void)arduino_config; (void)timestamp; (void)button2;
     if (global_node) 
     {
         global_node->update_Button(button1); 
@@ -379,7 +384,7 @@ int main(int argc, char **argv)
 
 
     // Grabber Configurations
-    GlobalConfig cfg={0};
+    GlobalConfig cfg={};
 
     //Set defaults for arduino/teensy
     snprintf(cfg.arduinoPath,128,"%s","/dev/ttyUSB0");
@@ -471,7 +476,7 @@ int main(int argc, char **argv)
 
     // Initialize Configurations
     //To debug aravis connection use : arv-camera-test-0.10  -d stream
-    GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL };
+    GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };
     ATINetFTConfig atinetft_config     = {&cfg, "192.168.137.201",  49152, "force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, (void*) ros_force_callback};
     ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM0",    "accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0,(void*)  ros_accelerometer_callback};
     ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyUSB0",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};

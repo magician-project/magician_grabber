@@ -242,11 +242,9 @@ int arduino_call_accelerometer_callback(ArduinoSerialConfig *arduino_config, uns
 {
     if (arduino_config->callback)
     {
-        // Cast back to the correct function pointer type before calling
-        int (*callback_func)(ArduinoSerialConfig *,unsigned long, unsigned long, double, double, double) =
-                (int (*)(ArduinoSerialConfig *,unsigned long, unsigned long, double, double, double)) arduino_config->callback;
-
-        return callback_func(arduino_config, timestamp, dev_timestamp, accX, accY, accZ);  // Call the function
+        int (*callback_func)(ArduinoSerialConfig *,unsigned long, unsigned long, double, double, double);
+        memcpy(&callback_func, &arduino_config->callback, sizeof(callback_func));
+        return callback_func(arduino_config, timestamp, dev_timestamp, accX, accY, accZ);
     }
     return 0;  // Indicate failure if no callback is set
 }
@@ -256,6 +254,7 @@ int arduino_call_accelerometer_callback(ArduinoSerialConfig *arduino_config, uns
 
 int process_accelerometer_data(ArduinoSerialConfig *arduino_config, char enabledFileOutput, unsigned long timestamp,const char *line, unsigned int lineLength)
 {
+ (void)lineLength;
  unsigned long dev_timestamp=0;
  int rawX=0, rawY=0, rawZ=0;
 
@@ -302,11 +301,9 @@ int arduino_call_string_callback_generic(ArduinoSerialConfig *arduino_config, un
 {
     if (arduino_config->callback)
     {
-        // Cast back to the correct function pointer type before calling
-        int (*callback_func)(ArduinoSerialConfig *,unsigned long, const char *, unsigned int) =
-                (int (*)(ArduinoSerialConfig *,unsigned long, const char *, unsigned int)) arduino_config->callback;
-
-        return callback_func(arduino_config, timestamp, line, lineLength);  // Call the function
+        int (*callback_func)(ArduinoSerialConfig *,unsigned long, const char *, unsigned int);
+        memcpy(&callback_func, &arduino_config->callback, sizeof(callback_func));
+        return callback_func(arduino_config, timestamp, line, lineLength);
     }
     return 0;  // Indicate failure if no callback is set
 }
@@ -315,6 +312,7 @@ int arduino_call_string_callback_generic(ArduinoSerialConfig *arduino_config, un
 
 static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsigned long timestamp,const char * line,unsigned int lineLength)
 {
+    (void)lineLength;
     if (arduino_config->callback)
     {
     //fprintf(stderr,"Arduino callback for %s received %s\n",arduino_config->csv_name,line);
@@ -347,11 +345,9 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
         Distance2 = atoi(distanceStrB);  
         Distance3 = atoi(distanceStrC);  
 
-         // Cast back to the correct function pointer type before calling
-        int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int) =
-                (int (*)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int)) arduino_config->callback;
-
-        return callback_func(arduino_config, timestamp, Button1, Button2, Distance1, Distance2, Distance3, Light1, Light2, Light3, Light4, Light5, Light6);  // Call the function
+        int (*callback_func)(ArduinoSerialConfig *,unsigned long, int, int, int, int, int, int, int, int, int, int, int);
+        memcpy(&callback_func, &arduino_config->callback, sizeof(callback_func));
+        return callback_func(arduino_config, timestamp, Button1, Button2, Distance1, Distance2, Distance3, Light1, Light2, Light3, Light4, Light5, Light6);
 
         //printf("Parsed values - Timestamp: %lu, Button1: %d, Distance1: %d, Distance2: %d, Distance3: %d\n", dev_timestamp, Button1, Distance1, Distance2, Distance3);
         return 1;  // Success

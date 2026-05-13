@@ -21,6 +21,9 @@ int addTactileAccelerometerReading(ArduinoSerialConfig *arduino_config, unsigned
   #if TACTILE
   //fprintf(stderr,"addTactileAccelerometerReading called\n\n");
   return tactile_add_acc(system_timestamp,accX,accY,accZ);
+  #else
+  (void)arduino_config; (void)system_timestamp; (void)dev_timestamp;
+  (void)accX; (void)accY; (void)accZ;
   #endif // TACTILE
   return 0;
 }
@@ -31,6 +34,9 @@ int addTactileForceReading(ATINetFTConfig *config, unsigned long system_timestam
    #if TACTILE
     //fprintf(stderr,"addTactileForceReading called\n\n");
     return tactile_add_force(system_timestamp,fX,fY,fZ);
+   #else
+   (void)config; (void)system_timestamp;
+   (void)fX; (void)fY; (void)fZ; (void)tX; (void)tY; (void)tZ;
    #endif // TACTILE
   return 0;
 }
@@ -40,6 +46,10 @@ void *tactile_thread(void *arg)
 {
    #if TACTILE
    struct TactileDataState  *config = (struct TactileDataState *) arg;
+   #else
+   (void)arg;
+   #endif // TACTILE
+   #if TACTILE
    GlobalConfig *cfg = config->global;
 
    char enabledFileOutput = (strcmp(cfg->outputDirectory,"/dev/null")!=0);

@@ -77,6 +77,7 @@ StreamingContext * startStream(const char * shm_name, const char * stream_name, 
 
 int stopStream(StreamingContext * shm_stream)
 {
+    (void)shm_stream;
     return 0;
 }
 

@@ -52,6 +52,7 @@ static void png_memory_read(png_structp png_ptr, png_bytep out_bytes, png_size_t
 
 int ReadPNGMem(const char *mem, unsigned int memSize, struct Image *pic, char read_only_header)
 {
+    (void)read_only_header;
     if (png_sig_cmp((png_bytep)mem, 0, 8)) {
         fprintf(stderr, "error: data is not a PNG.\n");
         return 0;
@@ -143,6 +144,7 @@ int ReadPNGMem(const char *mem, unsigned int memSize, struct Image *pic, char re
 
 int ReadPNG(const char *filename,struct Image * pic,char read_only_header)
 {
+    (void)read_only_header;
     //fprintf(stderr,"ReadPNG(%s)",filename);
     png_byte header[8];
 

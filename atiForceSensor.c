@@ -85,11 +85,9 @@ int ati_call_callback(ATINetFTConfig *config, unsigned long timestamp, double fX
 {
     if (config->callback)
     {
-        // Cast back to the correct function pointer type before calling
-        int (*callback_func)(ATINetFTConfig *,unsigned long, double, double, double, double, double, double) =
-                   (int (*)(ATINetFTConfig *,unsigned long, double, double, double, double, double, double)) config->callback;
-
-        return callback_func(config, timestamp,  fX, fY, fZ, tX, tY, tZ);  // Call the function
+        int (*callback_func)(ATINetFTConfig *,unsigned long, double, double, double, double, double, double);
+        memcpy(&callback_func, &config->callback, sizeof(callback_func));
+        return callback_func(config, timestamp, fX, fY, fZ, tX, tY, tZ);
     }
     return 0;  // Indicate failure if no callback is set
 }

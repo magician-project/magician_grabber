@@ -174,7 +174,7 @@ static int get_keystroke()
 
 static void clearScreen()
 {
-  const char *CLEAR_SCREEN_ANSI = "\e[1;1H\e[2J";
+  const char *CLEAR_SCREEN_ANSI = "\033[1;1H\033[2J";
   int i = write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 11);
   if (i!=11) { fprintf(stderr,"Could not clear screen for some reason..\n"); }
 }
