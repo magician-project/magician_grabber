@@ -32,7 +32,7 @@
 
 
 #if TACTILE_LIBRARY
-#warning "Compiling as Tactile Library"
+//#warning "Compiling as Tactile Library" <- No longer warn us, it is stable now :)
 const char * Fr_filename = "";
 const char * As_filename = "";
 const char * Fpsd_filename = "";

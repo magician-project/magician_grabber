@@ -261,8 +261,6 @@ std::vector<DataPoint> processAccPSD(const std::vector<DataPoint>& window)
     size_t win_size = window.size();
     size_t num_channels = window[0].numChannels();
 
-    int hop_size = Apsd_WINDOW_SIZE - Apsd_OVERLAP_WND;
-
     // Estrarre i dati per ciascun canale
     std::vector<std::vector<double>> channels(num_channels, std::vector<double>(win_size));
     for (size_t i = 0; i < win_size; i++) {
@@ -322,7 +320,7 @@ void ApsdComputation(const std::vector<DataPoint>& result, WindowProcessor& proc
             fftw_execute(plan);
 
             // Calcola l'energia totale
-            for (int i = 0; i < Apsd_WINDOW_SIZE / 2; i++) {
+            for (size_t i = 0; i < Apsd_WINDOW_SIZE / 2; i++) {
                 double magnitude = out[i][0] * out[i][0] + out[i][1] * out[i][1];  // |X[k]|^2
                 energy += magnitude;
             }
@@ -348,8 +346,6 @@ std::vector<DataPoint> processForcePSD(const std::vector<DataPoint>& window)
 {
     size_t win_size = window.size();
     size_t num_channels = window[0].numChannels();
-
-    int hop_size = Fpsd_WINDOW_SIZE - Fpsd_OVERLAP_WND;
 
     // Estrarre i dati per ciascun canale
     std::vector<std::vector<double>> channels(num_channels, std::vector<double>(win_size));
@@ -415,7 +411,7 @@ void FpsdComputation(const std::vector<DataPoint>& result, WindowProcessor& proc
             fftw_execute(plan);
 
             // Calcola l'energia totale
-            for (int i = 0; i < win_size / 2; i++)
+            for (size_t i = 0; i < win_size / 2; i++)
             {
                 double magnitude = out[i][0] * out[i][0] + out[i][1] * out[i][1];  // |X[k]|^2
                 energy += magnitude;
@@ -449,16 +445,20 @@ public:
         size_t fpsd_win_size=512, float fpsd_ovlp=0.8, float fpsd_lowcutf = 5.0, const std::string& fpsd_filename = "",
         size_t apsd_win_size=512, float apsd_ovlp=0.8, float apsd_lowcutf = 5.0, const std::string& apsd_filename = "")
 
-        : Fr_WINDOW_SIZE(fr_win_size), Fr_OVERLAP_WND(size_t(fr_win_size*fr_ovlp)), Fr_HIGH_CUT_F(fr_highcutf), Fr_LOW_CUT_F(fr_lowcutf),
-          F_INPUT_FS(f_input_fs), F_TARGET_FS(int(f_input_fs/f_dec_fact)), F_DECIMATION_FACTOR(f_dec_fact), Fr_output_file(fr_filename),
-
-          As_WINDOW_SIZE(as_win_size), As_OVERLAP_WND(size_t(as_win_size*as_ovlp)), As_HIGH_CUT_F(as_highcutf),
-          A_INPUT_FS(a_input_fs), A_TARGET_FS(int(a_input_fs/a_dec_fact)), A_DECIMATION_FACTOR(a_dec_fact), As_output_file(as_filename),
-
-          Apsd_WINDOW_SIZE(apsd_win_size), Apsd_OVERLAP_WND(size_t(apsd_win_size*apsd_ovlp)), Apsd_LOW_CUT_F(apsd_lowcutf), Apsd_output_file(apsd_filename),
-
-          Fpsd_WINDOW_SIZE(fpsd_win_size), Fpsd_OVERLAP_WND(size_t(fpsd_win_size*fpsd_ovlp)), Fpsd_LOW_CUT_F(fpsd_lowcutf), Fpsd_output_file(fpsd_filename),
-
+        : F_INPUT_FS(f_input_fs), F_TARGET_FS(int(f_input_fs/f_dec_fact)), F_DECIMATION_FACTOR(f_dec_fact),
+          A_INPUT_FS(a_input_fs), A_TARGET_FS(int(a_input_fs/a_dec_fact)), A_DECIMATION_FACTOR(a_dec_fact),
+          Fr_WINDOW_SIZE(fr_win_size), Fr_OVERLAP_WND(size_t(fr_win_size*fr_ovlp)),
+          As_WINDOW_SIZE(as_win_size), As_OVERLAP_WND(size_t(as_win_size*as_ovlp)),
+          Apsd_WINDOW_SIZE(apsd_win_size), Apsd_OVERLAP_WND(size_t(apsd_win_size*apsd_ovlp)),
+          Fpsd_WINDOW_SIZE(fpsd_win_size), Fpsd_OVERLAP_WND(size_t(fpsd_win_size*fpsd_ovlp)),
+          Fr_HIGH_CUT_F(fr_highcutf), Fr_LOW_CUT_F(fr_lowcutf),
+          As_HIGH_CUT_F(as_highcutf),
+          Apsd_LOW_CUT_F(apsd_lowcutf),
+          Fpsd_LOW_CUT_F(fpsd_lowcutf),
+          Fr_output_file(fr_filename),
+          As_output_file(as_filename),
+          Apsd_output_file(apsd_filename),
+          Fpsd_output_file(fpsd_filename),
           Fr_processor(fr_win_size, size_t(fr_win_size*fr_ovlp), 3, f_dec_fact, fr_filename),
           As_processor(as_win_size, size_t(as_win_size*as_ovlp), 1, a_dec_fact, as_filename),
           Apsd_processor(apsd_win_size, size_t(apsd_win_size*apsd_ovlp), 1, a_dec_fact, apsd_filename),

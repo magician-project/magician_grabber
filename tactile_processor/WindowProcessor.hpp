@@ -152,10 +152,10 @@ public:
     bool write_to_file;
     size_t step;
     WindowProcessor(size_t win_size, size_t ovlp, size_t channels, const int dec_fact, const std::string& filename = "")
-        : window_size(win_size), overlap(ovlp), step(win_size - ovlp),
+        : window_size(win_size), overlap(ovlp), num_channels(channels),
           DECIMATION_FACTOR(dec_fact),
-          num_channels(channels),
-          write_to_file(!filename.empty()) {
+          write_to_file(!filename.empty()),
+          step(win_size - ovlp) {
             downsampled_size = (win_size / DECIMATION_FACTOR);
             overlap_buffer = std::vector<DataPoint>(downsampled_size, DataPoint(0.0, channels));
             normalization_buffer = std::vector<double>(downsampled_size, 0.0);
