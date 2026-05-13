@@ -83,6 +83,9 @@ typedef struct
     char atiIP[128];
     int  atiPort;
 
+    char cameraStreamName[128];
+    char tactileStreamName[128];
+
     #if TACTILE
     char calculateTactileFeatures;
     #endif // TACTILE
@@ -348,6 +351,8 @@ static void print_help()
     printf("  --rt                      Set real-time priority (requires privileges).\n");
     printf("  --all                     Enable all available devices.\n");
     printf("  --stream                  Stream camera data to shared memory (disables file output).\n");
+    printf("  --camerastream <name>     Set shared memory stream name for camera (def. stream1).\n");
+    printf("  --tactilestream <name>    Set shared memory stream name for tactile (def. stream_tactile).\n");
     printf("  --scan                    Scan using Arduino and exit.\n");
     printf("  --help                    Show this help message and exit.\n");
     printf("  --compress                Save camera frames as .png instead of .pnm.\n");
@@ -628,6 +633,26 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
             fprintf(stderr,"Streaming camera data to shared memory\n");
             noOutputDirectory(cfg);
             fprintf(stderr,"File output disabled, use --output with a later command to re-enable\n");
+        }
+        else if (strcmp(argv[i],"--camerastream")==0)
+        {
+            if (argc>i+1)
+            {
+              snprintf(cfg->cameraStreamName,128,"%s",argv[i+1]);
+              fprintf(stderr,"Camera stream name set to \"%s\"\n",cfg->cameraStreamName);
+            }
+            else
+            { fprintf(stderr,"Failed setting camera stream name, not enough arguments!\n"); }
+        }
+        else if (strcmp(argv[i],"--tactilestream")==0)
+        {
+            if (argc>i+1)
+            {
+              snprintf(cfg->tactileStreamName,128,"%s",argv[i+1]);
+              fprintf(stderr,"Tactile stream name set to \"%s\"\n",cfg->tactileStreamName);
+            }
+            else
+            { fprintf(stderr,"Failed setting tactile stream name, not enough arguments!\n"); }
         }
 }
 return 1;

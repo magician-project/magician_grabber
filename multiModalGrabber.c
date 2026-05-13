@@ -121,6 +121,8 @@ int main (int argc, char **argv)
     //Set defaults for arduino/teensy
     snprintf(cfg.arduinoPath,128,"%s","/dev/ttyUSB0");
     snprintf(cfg.teensyPath,128,"%s","/dev/ttyACM0");
+    snprintf(cfg.cameraStreamName,128,"%s","stream1");
+    snprintf(cfg.tactileStreamName,128,"%s","stream_tactile");
 
     // Global flag for termination
     cfg.keep_running = 1;
@@ -249,7 +251,7 @@ int main (int argc, char **argv)
     if ( (cfg.streamData) && (cfg.calculateTactileFeatures) )
          {
            fprintf(stderr,"Starting Tactile Stream..\n");
-           streaming_tactile_context = startTactileStream("tactile_frames.shm", "stream_tactile", TACTILE_STREAMING_WINDOW, TACTILE_STREAMING_ELEMENTS);
+           streaming_tactile_context = startTactileStream("tactile_frames.shm", cfg.tactileStreamName, TACTILE_STREAMING_WINDOW, TACTILE_STREAMING_ELEMENTS);
            tactile_config.tactile_shm_stream = (void*) streaming_tactile_context;
            if (tactile_config.tactile_shm_stream==NULL)
                                   {  fprintf(stderr,RED "Failed to start streaming tactile data to shared memory!\n" NORMAL); exit(1); }
@@ -288,7 +290,7 @@ int main (int argc, char **argv)
                            fprintf(stderr,"Starting Camera Stream..\n");
 
                            //We transport the raw sensor as 1 channel! (hence the 1 in next line)
-                           streaming_context = startStream("video_frames.shm", "stream1", cfg.width, cfg.height, 1);
+                           streaming_context = startStream("video_frames.shm", cfg.cameraStreamName, cfg.width, cfg.height, 1);
                            camera_config.camera_shm_stream = (void*) streaming_context;
                            //fprintf(stderr,"Main Thread shm=%p\n",streaming_context);
                            //fprintf(stderr,"Main Thread #2 shm=%p\n",camera_config.camera_shm_stream);
