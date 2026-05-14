@@ -450,7 +450,7 @@ int main(int argc, char **argv)
 
     // Arduino commands
     char arduinoUseRoundLight[]    = {"r\n"};
-    char arduinoUseDistanceLight[] = {"a\n"};
+    //char arduinoUseDistanceLight[] = {"a\n"};        // Not used currently
     char * arduinoExtraCommand = arduinoUseRoundLight; //0 Or Always set round lights on
 
 
