@@ -4,7 +4,7 @@
 
 A multi-modal data acquisition tool for robotic manipulation research. Synchronously captures and stores data from GigE cameras, ATI NetFT force/torque sensors, Teensy-based accelerometers, and Arduino-based distance/lighting controllers. Supports real-time streaming to shared memory, ROS 2 topic publishing, and on-the-fly tactile feature extraction.
 
-<img src="https://github.com/magician-project/magician_grabber/blob/main/doc/polarshadow.jpg?raw=true" height=200/> 
+<img src="https://github.com/magician-project/magician_grabber/blob/main/doc/polarshadow.jpg?raw=true" height=400/> 
 
 ---
 
