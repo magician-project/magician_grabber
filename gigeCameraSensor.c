@@ -44,8 +44,8 @@ struct Settings
 
 #define EPOCH_YEAR_IN_TM_YEAR 1900
 const unsigned int ARV_VIEWER_N_BUFFERS=100;
-#define TRYHARD_MODE 1
-#define EMMIT_ARAVIS_SIGNALS 0
+#define TRYHARD_MODE 1         /* When 1, re-push failed ARAVIS buffers back onto the stream instead of discarding them. */
+#define EMMIT_ARAVIS_SIGNALS 0 /* When 1, connect ARAVIS GLib signals (new-buffer, control-lost) instead of polling. */
 
 #include <errno.h>
 #include <ctype.h>

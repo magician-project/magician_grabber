@@ -11,20 +11,20 @@ extern "C"
 
 typedef struct
 {
-    GlobalConfig* global;
-    char ip_address[128];
-    int port;
-    char csv_name[128];
+    GlobalConfig* global;           /**< Shared runtime configuration. */
+    char ip_address[128];           /**< ATI NetFT sensor IP address (e.g. "192.168.1.1"). */
+    int port;                       /**< UDP port the sensor listens on (default 49152). */
+    char csv_name[128];             /**< Path of the output CSV file for force/torque data. */
 
-    FILE * csv_file;
-    char * keep_running;
-    char running;
+    FILE * csv_file;                /**< Open handle to csv_name; NULL when file output is disabled. */
+    char * keep_running;            /**< Points to the global termination flag; thread exits when *keep_running == 0. */
+    char running;                   /**< 1 while the thread is active, 0 after it exits. */
 
-    int socketHandle;
-    unsigned long receivedDataFrames;
-    float Hz;
+    int socketHandle;               /**< UDP socket file descriptor used to receive NetFT packets. */
+    unsigned long receivedDataFrames; /**< Total UDP frames received since thread start. */
+    float Hz;                       /**< Measured sensor acquisition rate in Hz. */
 
-    void * callback;
+    void * callback;                /**< Optional user callback invoked on every new sample; cast to force_callback_t. */
 
 } ATINetFTConfig;
 

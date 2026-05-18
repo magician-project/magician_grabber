@@ -18,13 +18,13 @@ extern "C"
 struct TactileDataState
 {
   //-------------------------------------------------------
-  GlobalConfig* global;
-  char * keep_running;
-  char running;
+  GlobalConfig* global;           /**< Shared runtime configuration. */
+  char * keep_running;            /**< Points to the global termination flag; thread exits when *keep_running == 0. */
+  char running;                   /**< 1 while the thread is active, 0 after it exits. */
   //-------------------------------------------------------
-  unsigned int currentSample;
+  unsigned int currentSample;     /**< Ring-buffer write index; incremented on every incoming sensor sample. */
   //-------------------------------------------------------
-  void * tactile_shm_stream;
+  void * tactile_shm_stream;      /**< Shared-memory stream context for tactile data; non-NULL when --stream is active. */
 };
 
 int addTactileForceReading(ATINetFTConfig *config, unsigned long timestamp, double fX,double fY,double fZ,double tX,double tY,double tZ);

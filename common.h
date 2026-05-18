@@ -37,10 +37,10 @@ extern "C"
 #include "colors.h"
 #include "performance.h"
 
-#define MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS 750
+#define MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS 750  /**< Soft cap on exposure time in µs; requires --I_know_what_I_am_doing to exceed. */
 
-#define TACTILE_STREAMING_WINDOW 4000
-#define TACTILE_STREAMING_ELEMENTS 8
+#define TACTILE_STREAMING_WINDOW   4000  /**< Number of time-steps retained in the tactile ring buffer per flush cycle. */
+#define TACTILE_STREAMING_ELEMENTS 8     /**< Number of sensor channels packed per time-step (force×3 + torque×3 + accel×2). */
 //#define TACTILE_STREAMING_ELEMENTS 16 //Assuming everything enabled
 
 static char arduinoUseRoundLight[]    = {"r\n"};
@@ -50,60 +50,57 @@ static char arduinoUsePatternLight[]  = {"t\n"};
 
 typedef struct
 {
-    char outputDirectory[1024];
-    char outputDirectoryOriginal[1024];
-    unsigned long maxTimeToGrabForInSeconds;
+    char outputDirectory[1024];         /**< Resolved output path (may be "tmpfs/…" or "/dev/null"). */
+    char outputDirectoryOriginal[1024]; /**< Output path as supplied by the user before any resolution. */
+    unsigned long maxTimeToGrabForInSeconds; /**< Hard stop time in seconds; ignored when run_forever is set. */
 
     // Global flag for termination
-    char keep_running       ;
-    char run_forever        ;
-    char viewer             ;
-    unsigned char countdown ;
+    char keep_running;       /**< Main-loop termination flag; set to 0 by SIGINT or when the capture time elapses. */
+    char run_forever;        /**< When 1, maxTimeToGrabForInSeconds is ignored and capture runs until interrupted. */
+    char viewer;             /**< When 1, launch the live viewer process alongside capture. */
+    unsigned char countdown; /**< Seconds to count down before starting capture; 0 to skip. */
 
-    char speak;
-    char silent;
-    char unixtime;
-    char manual_trigger_light;
+    char speak;              /**< When 1, use festival TTS to vocalise the countdown. */
+    char silent;             /**< When 1, suppress per-frame progress output to stdout. */
+    char unixtime;           /**< When 1, write Unix epoch timestamps instead of human-readable ones. */
+    char manual_trigger_light; /**< When 1, send a light-change command to the Arduino after every captured frame. */
 
     // Modules available to use
-    char simulate;
-    char interceptKeyboard;
-    char useRAM       ;
-    char useArduino   ;
-    char useTeensy    ;
-    char useCamera    ;
-    char useATIForce  ;
-    char streamData   ;
-    char compress     ;
+    char simulate;           /**< When 1, all device threads run in simulation mode (no hardware required). */
+    char interceptKeyboard;  /**< When 1, capture raw keystrokes during acquisition (disables terminal echo). */
+    char useRAM;             /**< When 1, write output to tmpfs/ (RAM-backed) to avoid disk bottleneck at high frame rates. */
+    char useArduino;         /**< When 1, start the Arduino serial thread (distance sensor + lighting controller). */
+    char useTeensy;          /**< When 1, start the Teensy serial thread (accelerometer). */
+    char useCamera;          /**< When 1, start the GigE camera thread. */
+    char useATIForce;        /**< When 1, start the ATI NetFT force/torque thread. */
+    char streamData;         /**< When 1, publish frames to POSIX shared memory (disables file output by default). */
+    char compress;           /**< When 1, save camera frames as PNG; otherwise raw PNM. */
 
-    char * arduinoExtraCommand;
+    char * arduinoExtraCommand; /**< If non-NULL, sent to the Arduino at startup to select a lighting mode (see arduinoUse*Light strings). */
 
-    char arduinoPath[128];
-    char teensyPath[128];
-    char atiIP[128];
-    int  atiPort;
+    char arduinoPath[128];   /**< Serial device path for the Arduino (default /dev/ttyUSB0). */
+    char teensyPath[128];    /**< Serial device path for the Teensy (default /dev/ttyACM0). */
+    char atiIP[128];         /**< ATI NetFT sensor IP address. */
+    int  atiPort;            /**< ATI NetFT sensor UDP port. */
 
-    char cameraStreamName[128];
-    char tactileStreamName[128];
+    char cameraStreamName[128];  /**< POSIX SHM stream name for camera frames (default "stream1"). */
+    char tactileStreamName[128]; /**< POSIX SHM stream name for tactile data (default "stream_tactile"). */
 
     #if TACTILE
-    char calculateTactileFeatures;
+    char calculateTactileFeatures; /**< When 1, run the real-time tactile feature extractor (magician_grabber_tactile only). */
     #endif // TACTILE
 
 
     // Camera Default settings
-    unsigned int width      ;
-    unsigned int height     ;
-    unsigned int exposure   ; // 0 means no setting
-    double       gain       ;
-    double       blackLevel;
-    double       frameRate ; //Each image is 4.5MB,
-    //this framerate writes 45MB/sec to disk which is a sane value
-    //use --ram to store data on a tmpfs/ for higher speeds
-    //use --rt to elevate priority for higher speeds
+    unsigned int width;      /**< Capture width in pixels. */
+    unsigned int height;     /**< Capture height in pixels. */
+    unsigned int exposure;   /**< Exposure time in microseconds; 0 means use the camera default. */
+    double       gain;       /**< Analogue gain. */
+    double       blackLevel; /**< Black-level offset. */
+    double       frameRate;  /**< Target frame rate in Hz. Each frame is ~4.5 MB; use --ram above ~10 Hz to avoid disk saturation. */
 
 
-    void * arduino_cfg;
+    void * arduino_cfg; /**< Pointer to ArduinoSerialConfig; cast before use. Owned and freed by the main thread. */
 
 } GlobalConfig;
 
