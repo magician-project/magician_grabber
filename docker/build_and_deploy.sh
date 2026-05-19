@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Build and launch the magician_grabber Docker container.
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPOSITORY="$( cd "$DIR/.." && pwd )"
+
+NAME="magician_grabber"
+
+export DOCKER_BUILDKIT=1
+
+# Build context is the project root so the Dockerfile can COPY docker scripts
+docker build \
+    --ssh default \
+    -t $NAME \
+    -f "$DIR/Dockerfile" \
+    "$REPOSITORY" \
+    --build-arg user_id=$UID
+
+# Remove a stale container with the same name if it exists
+docker rm -f ${NAME}-container 2>/dev/null || true
+
+# --network host  : ROS2 DDS (multicast/unicast) works transparently with the host
+# --ipc host      : shared memory segments (SharedMemoryManager) are shared with the host
+docker run -d \
+    --shm-size 32G \
+    --cap-add=SYS_NICE \
+    --network host \
+    --ipc host \
+    --mount type=tmpfs,destination=/home/user/ram,tmpfs-mode=1777 \
+    -it \
+    --name ${NAME}-container \
+    -v "$REPOSITORY":/home/user/workspace \
+    -v /storage:/storage \
+    $NAME
+
+docker ps -a
+
+OUR_DOCKER_ID=$(docker ps -a | grep $NAME | head -1 | cut -f1 -d' ')
+echo "Container ID: $OUR_DOCKER_ID"
+echo "To monitor resource usage: docker stats ${NAME}-container"
+echo "To run the node: ros2 run rclcpp_magician_grabber magician_grabber"
+echo "Attaching..."
+docker attach $OUR_DOCKER_ID
+
+exit 0
