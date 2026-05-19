@@ -14,6 +14,7 @@ A multi-modal data acquisition tool for robotic manipulation research. Synchrono
 - [Binaries](#binaries)
 - [Command-Line Options](#command-line-options)
 - [Usage Examples](#usage-examples)
+- [Camera Calibration](#camera-calibration)
 
 ---
 
@@ -205,3 +206,48 @@ Print all available options:
 ```bash
 ./magician_grabber --help
 ```
+
+---
+
+## Camera Calibration
+
+<img src="https://github.com/magician-project/magician_grabber/blob/main/doc/calibmag.jpg?raw=true" height=350/>
+
+`PolarShadowVisionSensorCalibrationFromDatasets.py` computes intrinsics and hand-eye transform for the polarization camera mounted on the Doosan robot arm, using datasets captured with this grabber.
+
+### Dataset layout
+
+Each capture must produce one `frame*` directory per robot pose containing:
+
+| File | Contents |
+|---|---|
+| `colorFrame_0_*.pnm` | Raw Bayer-polarization images |
+| `robot_pose.csv` | One-row CSV with `J1`–`J6`, `X`, `Y`, `Z`, `Rx`, `Ry`, `Rz` |
+| `camera.csv` | Timestamp / frame-ID table |
+| `info.json` | Capture settings |
+
+> **Doosan H2515 / CS-01 note:** `Rx`, `Ry`, `Rz` are **ZYZ Euler angles** (degrees), not roll-pitch-yaw. `Rx` = first Z rotation, `Ry` = Y rotation, `Rz` = second Z rotation. `X`/`Y`/`Z` are in millimetres.
+
+### What the script does
+
+1. **Debayers** each PNM into four polarization channels (0°, 45°, 90°, 135°) and averages them to grayscale.
+2. **Detects chessboard corners** (9×6 inner corners, 11.5 mm squares) via `cv2.findChessboardCorners` + sub-pixel refinement.
+3. **Intrinsic calibration** — runs `cv2.calibrateCamera` and reports RMS reprojection error, `K`, and distortion coefficients.
+4. **Hand-eye calibration** — converts Doosan ZYZ poses to rotation matrices and calls `cv2.calibrateHandEye` (Tsai method) to recover `R_cam2gripper` / `t_cam2gripper`.
+
+### Outputs
+
+| File | Description |
+|---|---|
+| `calibration_data.npz` | NumPy archive: `K`, distortion, per-view `rvecs`/`tvecs` |
+| `last.calib` | Stereolabs-compatible `.calib` text file |
+| `calibration_poses.csv` | Per-view robot poses and reprojection vectors |
+| `hand_eye.npz` | `R_cam2gripper`, `t_cam2gripper` |
+
+### Usage
+
+```bash
+python3 PolarShadowVisionSensorCalibrationFromDatasets.py
+```
+
+By default it scans `frame*` directories relative to the script's location. Pass a different base directory by editing `BASE_DIR` at the top of the script, or call `run_calibration(base_dir=...)` directly.
