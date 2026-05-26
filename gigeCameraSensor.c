@@ -545,7 +545,7 @@ int gigecamera_stopStream(GiGECameraConfig * context)
     if (context->exposure!=0)
     {
         printf("Exposure time was %u\n",context->exposure);
-        printf("This is equivalent to %0.2f FPS\n",(float) 1000000.0/context->exposure);
+        printf("Assuming Exposure/Framerate parity optical clarity is equivalent to %0.2f FPS\n",(float) 1000000.0/context->exposure);
     }
 
     context->camera=NULL;

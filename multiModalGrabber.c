@@ -46,7 +46,7 @@
 #endif // TACTILE
 
 
-static const char MagicianGrabberVersion[]="0.96";
+static const char MagicianGrabberVersion[]="1.0";
 
 volatile sig_atomic_t stop = 0;
 
