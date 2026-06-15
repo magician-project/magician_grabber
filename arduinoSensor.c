@@ -377,6 +377,19 @@ int process_generic_string_data(ArduinoSerialConfig *config, char enabledFileOut
 }
 
 
+/* Handle a per-zone ToF frame line emitted by a multizone board ("x1/x2/x3,dev_ts,z0,...,z63").
+ * These lines are written verbatim to distances.csv (never to controller.csv) and are stamped
+ * with the host timestamp of the controller frame they belong to, so distances.csv and
+ * controller.csv share identical timestamps and can be joined row-for-row. */
+int process_distance_zone_data(ArduinoSerialConfig *config, char enabledFileOutput, unsigned long timestamp,const char *lineBuffer, unsigned int lineIndex)
+{
+    (void)lineIndex;
+    if (enabledFileOutput && (config->distances_file!=0))
+       { fprintf(config->distances_file, "%lu,%s\n", timestamp, lineBuffer); }
+    return 1;
+}
+
+
 
 void *arduino_simulated_thread(void *arg)
 {
@@ -443,6 +456,7 @@ void *arduino_thread(void *arg)
     #define LINE_BUFFER_SIZE 1024//1K buffer is big
     char * lineBuffer = (char*) malloc(sizeof(char) * (LINE_BUFFER_SIZE + 1) );
     int lineIndex = 0;      // Current write position
+    unsigned long lastFrameTimestamp = 0;  // Host timestamp of the most recent controller frame; reused for its x1/x2/x3 zone lines
 
 
     if ( (buffer!=0) && (lineBuffer!=0) )
@@ -479,7 +493,24 @@ void *arduino_thread(void *arg)
         }
      if (strstr(config->csv_name,"controller")!=0)
         { if (enabledFileOutput)
-           {  fprintf(config->csv_file,"timestamp,dev_timestamp,Button1,Button2,Distance1,Distance2,Distance3,Light1,Light2,Light3,Light4,Light5,Light6\n"); }
+           {
+            fprintf(config->csv_file,"timestamp,dev_timestamp,Button1,Button2,Distance1,Distance2,Distance3,Light1,Light2,Light3,Light4,Light5,Light6\n");
+
+            //Multizone boards stream full 8x8 (64-zone) ToF frames as extra "x1/x2/x3" lines.
+            //Split those out into a separate distances.csv sitting next to controller.csv.
+            char fullDistancesOutputPath[2048]={0};
+            snprintf(fullDistancesOutputPath,2048,"%s/distances.csv",cfg->outputDirectory);
+            config->distances_file = fopen(fullDistancesOutputPath, "w");
+            if (!config->distances_file)
+               { perror("Failed to open distances CSV file"); }
+            else
+               {
+                fprintf(stderr,"Opened %s for output\n",fullDistancesOutputPath);
+                fprintf(config->distances_file,"timestamp,sensor,dev_timestamp");
+                for (int z=0; z<64; z++) { fprintf(config->distances_file,",z%d",z); }
+                fprintf(config->distances_file,"\n");
+               }
+           }
         }
 
 
@@ -514,8 +545,20 @@ void *arduino_thread(void *arg)
                    process_accelerometer_data(config,enabledFileOutput,receptionTime,lineBuffer,lineIndex);
                    //any callbacks have been called at this point
                  } else
+                 if (lineBuffer[0]=='x')
+                 {
+                   //Per-zone ToF frame ("x1/x2/x3,...") from a multizone board.
+                   //Route to distances.csv, reusing the timestamp of the most recent controller
+                   //frame so both files stay timestamp-aligned. controller.csv is left untouched.
+                   process_distance_zone_data(config,enabledFileOutput,lastFrameTimestamp,lineBuffer,lineIndex);
+                 } else
+                 if (lineBuffer[0]=='V')
+                 {
+                   //Firmware version banner (e.g. "V:1.0") - not CSV data, ignore.
+                 } else
                  {
                    //This is general data that is dumped without being processed
+                   lastFrameTimestamp = receptionTime;
                    process_generic_string_data(config,enabledFileOutput,receptionTime,lineBuffer,lineIndex);
                    //any callbacks have been called at this point
                  }
@@ -524,6 +567,7 @@ void *arduino_thread(void *arg)
                  lineIndex = 0;
                  config->receivedDataFrames+=1;
                  fflush(config->csv_file);
+                 if (config->distances_file!=0) { fflush(config->distances_file); }
                 }
             }
             else
@@ -553,6 +597,9 @@ void *arduino_thread(void *arg)
 
       if (enabledFileOutput)
          { fclose(config->csv_file); }
+
+      if (config->distances_file!=0)
+         { fclose(config->distances_file); config->distances_file=0; }
 
       arduino_stopStream(config);
     }

@@ -27,6 +27,8 @@ typedef struct
     float Hz;                       /**< Measured sensor acquisition rate in Hz. */
 
     void * callback;                /**< Optional user callback; cast to accelerometer_callback_t or controller_callback_t depending on firmware. */
+
+    FILE *distances_file;           /**< Open handle to distances.csv (per-zone ToF frames from multizone boards); NULL when disabled or device is not the controller. */
 } ArduinoSerialConfig;
 
 
