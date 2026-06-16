@@ -70,6 +70,7 @@ typedef struct
     char interceptKeyboard;  /**< When 1, capture raw keystrokes during acquisition (disables terminal echo). */
     char useRAM;             /**< When 1, write output to tmpfs/ (RAM-backed) to avoid disk bottleneck at high frame rates. */
     char useArduino;         /**< When 1, start the Arduino serial thread (distance sensor + lighting controller). */
+    char isPico2;            /**< When 1, the serial board is the experimental RP2350/Pico 2 (native USB-CDC); keep DTR asserted so it transmits. Default 0 = legacy AVR Nano. */
     char useTeensy;          /**< When 1, start the Teensy serial thread (accelerometer). */
     char useCamera;          /**< When 1, start the GigE camera thread. */
     char useATIForce;        /**< When 1, start the ATI NetFT force/torque thread. */
@@ -319,6 +320,7 @@ static void print_help()
     printf("  --simulate                Simulate Devices (development).\n");
     printf("  -o, --output <path>       Set the output directory.\n");
     printf("  --arduino <path>          Set the path to arduino (def. /dev/ttyACM0).\n");
+    printf("  --pico2                   Serial board is the experimental RP2350/Pico 2 (keep DTR asserted for its USB-CDC).\n");
     printf("  --teensy <path>           Set the path to teensy (def. /dev/ttyACM1).\n");
     printf("  --nooutput                Disable file output (redirect to /dev/null).\n");
     printf("  --countdown <seconds>     Perform a countdown before starting.\n");
@@ -407,6 +409,11 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         if (strcmp(argv[i],"--noarduino")==0)
         {
               cfg->useArduino = 0;
+        } else
+        if (strcmp(argv[i],"--pico2")==0)
+        {
+              cfg->isPico2 = 1;
+              fprintf(stderr,"Experimental RP2350/Pico 2 board selected (native USB-CDC DTR handling)\n");
         } else
         if (strcmp(argv[i],"--arduino")==0)
         {

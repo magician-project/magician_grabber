@@ -26,7 +26,7 @@ const double SENSITIVITY    = 0.330;   // Sensitivity (V/g)
 const double GRAVITY        = 9.81;    // Gravity acceleration (m/s^2)
 
 
-int serialport_init(const char* serialport, int baud)
+int serialport_init(const char* serialport, int baud, int pico2Mode)
 {
     struct termios toptions={0};
 
@@ -141,9 +141,25 @@ int serialport_init(const char* serialport, int baud)
 
     //usleep(100000); // Small delay //Removed 30/7/2025 Michele's fix to align timestamps properly
 
-    flags &= ~TIOCM_DTR;  // Clear DTR
-    flags &= ~TIOCM_RTS;  // Clear RTS
-    ioctl(fd, TIOCMSET, &flags);
+    if (!pico2Mode)
+    {
+      // Default (legacy AVR Arduino Nano deployed in production): clear DTR/RTS.
+      // The Nano's USB-serial bridge treats DTR as an edge-triggered auto-reset
+      // pulse, so clearing it here is the established, working behaviour.
+      flags &= ~TIOCM_DTR;  // Clear DTR
+      flags &= ~TIOCM_RTS;  // Clear RTS
+      ioctl(fd, TIOCMSET, &flags);
+    }
+    else
+    {
+      // --pico2 (experimental RP2350/Pico 2 multizone board): KEEP DTR/RTS
+      // asserted. The Pico 2 uses native USB-CDC which gates all transmission on
+      // the host's DTR line (TinyUSB tud_cdc_connected() is false until DTR is
+      // asserted); clearing it makes the firmware run but silently drop every
+      // Serial.print(), so the host receives zero bytes. Leaving DTR asserted is
+      // required here.
+      fprintf(stderr,"Pico2 mode: keeping DTR/RTS asserted so the native USB-CDC will transmit\n");
+    }
 
     //usleep(2000000);  // Allow 2 sec Arduino to reset //Removed 30/7/2025 Michele's fix to align timestamps properly
     //---------------------------------------------------
@@ -162,7 +178,8 @@ int serialport_close( int fd )
 
 int arduino_startStream(ArduinoSerialConfig * context)
 {
-  context->serial_fd = serialport_init(context->port_name,context->baud_rate);
+  int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
+  context->serial_fd = serialport_init(context->port_name,context->baud_rate,pico2Mode);
 
   //Send Start Command!
   char buffer[]={"i\n"};
