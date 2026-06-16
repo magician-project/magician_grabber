@@ -22,10 +22,15 @@ shift 2
 
 ./magician_grabber --camera  --distance --arduino /dev/ttyACM0 --output "$OUTPUT" --exposure "$EXPOSURE" --time 60 --pico2 "$@"
 
+
+echo "Compressing '$OUTPUT' (converting .pnm -> .png) ..."
+/home/ammar/Documents/Programming/magician_grabber_annotator/venv/bin/python /home/ammar/Documents/Programming/magician_grabber_annotator/compressDataset.py "$OUTPUT"
+
 # Ask whether to upload the recorded dataset to the remote machine
 read -r -p "Dataset '$OUTPUT' recorded. Upload it now? [y/N] " ANSWER
 case "$ANSWER" in
   [yY]|[yY][eE][sS])
+
     echo "Uploading '$OUTPUT' ..."
     scp -r -P 2222 "$OUTPUT/" ammar@ammar.gr:/media/ammar/FastDatasets/Magician/CameraV2Datasets
     ;;
