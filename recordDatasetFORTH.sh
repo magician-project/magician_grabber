@@ -24,7 +24,7 @@ shift 2
 
 
 echo "Compressing '$OUTPUT' (converting .pnm -> .png) ..."
-/home/ammar/Documents/Programming/magician_grabber_annotator/venv/bin/python /home/ammar/Documents/Programming/magician_grabber_annotator/compressDataset.py "$OUTPUT"
+../magician_grabber_annotator/venv/bin/python ../magician_grabber_annotator/compressDataset.py "$OUTPUT"
 
 # Ask whether to upload the recorded dataset to the remote machine
 read -r -p "Dataset '$OUTPUT' recorded. Upload it now? [y/N] " ANSWER
