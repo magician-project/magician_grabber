@@ -20,6 +20,16 @@ EXPOSURE="$2"
 OUTPUT="${NAME}_${EXPOSURE}"
 shift 2
 
+# Clean up any leftovers from a previous (possibly interrupted) run so the new
+# recording does not get mixed with stale files. This covers the output dir
+# itself plus the temp/backup folders that compressDataset.py may leave behind.
+for STALE in "$OUTPUT" ".${OUTPUT}.tmp_compress" ".${OUTPUT}.backup_old"; do
+  if [ -e "$STALE" ]; then
+    echo "Removing leftover '$STALE' from a previous run ..."
+    rm -rf -- "$STALE"
+  fi
+done
+
 ./magician_grabber --camera  --distance --arduino /dev/ttyACM0 --output "$OUTPUT" --exposure "$EXPOSURE" --time 60 --pico2 "$@"
 
 
