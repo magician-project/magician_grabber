@@ -12,7 +12,7 @@ TARGET_TACTILE = magician_grabber_tactile
 # -pg
 TACTILE_DEBUG   = -pg -Wstrict-overflow -fsanitize=address -fPIE -fPIC -DTACTILE -DTACTILE_LIBRARY tactile_processor/TactileProcessor.cpp -lfftw3  -L: tactile_processor/iir1/build/libiir_static.a  
 TACTILE_RELEASE = -DTACTILE -DTACTILE_LIBRARY tactile_processor/TactileProcessor.cpp -lfftw3  -L: tactile_processor/iir1/build/libiir_static.a  
-SRC = multiModalGrabber.c arduinoSensor.c atiForceSensor.c gigeCameraSensor.c sharedMemoryVideoBuffers.c imageStreamer.c tactileFeatures.c tactileStreamer.c codecs/pngInput.c
+SRC = multiModalGrabber.c arduinoSensor.c atiForceSensor.c gigeCameraSensor.c sharedMemoryVideoBuffers.c imageStreamer.c tactileFeatures.c tactileStreamer.c polarizationLights.c codecs/pngInput.c
 
 LIBRARY_SRC   = sharedMemoryVideoBuffers.c
 LIBRARY_OBJ   = $(addprefix $(OBJ_DIR)/, $(notdir $(LIBRARY_SRC:.c=.o)))

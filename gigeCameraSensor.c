@@ -433,11 +433,12 @@ int gigecamera_startStream(GiGECameraConfig * context)
             arv_stream_set_emit_signals (stream, TRUE);
             #endif
 
-            if (error == NULL)
-                /* Start the acquisition */
-                arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, NULL);
-            arv_camera_start_acquisition (camera, &error);
-
+            /* Apply exposure/gain/framerate BEFORE starting acquisition.
+             * Setting them afterwards leaves the first frames running on whatever
+             * the camera had persisted, so their ExposureActive pulse width differs
+             * from every later frame — and that pulse is what gates the LEDs, so
+             * those frames get a different light/exposure overlap than the rest of
+             * the dataset. */
             if (settings.exposure!=0)
             {
                 arv_camera_set_exposure_time(camera, settings.exposure, NULL);
@@ -454,6 +455,11 @@ int gigecamera_startStream(GiGECameraConfig * context)
             {
                 arv_camera_set_frame_rate (camera, settings.frameRate, NULL);
             }
+
+            if (error == NULL)
+                /* Start the acquisition */
+                arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, NULL);
+            arv_camera_start_acquisition (camera, &error);
 
 
             if (error == NULL)

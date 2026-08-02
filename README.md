@@ -128,6 +128,40 @@ Configuration is entirely through command-line flags:
 | `--rlight` | Round-robin lighting pattern. |
 | `--dlight` | Lighting intensity controlled by the distance sensor reading. |
 | `--tlight` | Structured patterned lighting. |
+| `--exposure-locked` | Let the controller advance lights itself, one step per camera exposure. Requires controller firmware ≥ 1.33. |
+| `--polarization` | Choose lights from per-frame DoLP/AoLP measurements. Implies `--exposure-locked`. |
+| `--polstride <n>` | Polarization subsampling stride (default 8; 1 = every superpixel). |
+| `--poldwell <n>` | Frames each light is held per measurement cycle (default 3). |
+
+#### Who sequences the lights
+
+There are two paths, selected automatically from the controller's version banner:
+
+- **Legacy (`--trigger`, the default).** The host sends `+` after each captured
+  frame. Works with any firmware, but the step has to cross the GigE readout
+  (~42 ms for a 5 MB frame), the serial link and the controller's loop tick before
+  the next exposure begins — at 22 fps that budget is already spent, so the light
+  can change a frame late. Fine at 10 fps.
+- **Exposure-locked (`--exposure-locked`, firmware ≥ 1.33).** The controller walks
+  a host-uploaded schedule, advancing one step per exposure inside its own ISR.
+  Host latency leaves the critical path entirely; a schedule that arrives late
+  simply applies at the next cycle. Each strobe is reported with a monotonic
+  `StrobeCounter` and the COB that actually fired, so frames map to lights by
+  counting rather than by timestamp correlation.
+
+If the controller does not report firmware ≥ 1.33, the newer flags are ignored with
+a warning and the legacy path is used — the newer commands are *not* safely ignored
+by old firmware, so this gate is enforced rather than advisory.
+
+> **Lighting hardware note.** The LED COBs are driven above their rated voltage and
+> survive on low duty cycle. Firmware ≥ 1.33 enforces a per-COB thermal budget in
+> the exposure ISR (0.781 % sustained per COB): if a COB is requested too often the
+> controller substitutes the one with the most thermal headroom, so the frame is
+> still lit and `StrobeLight` records what really fired. The limit sits ~3.6× above
+> the highest duty the hardware has been shown to tolerate and above anything the
+> adaptive policy can request, so it should never engage in normal capture — a
+> rising `Substitutions` count in `controller.csv` means something is asking for
+> more light than the COBs can take.
 
 ### Keyboard
 

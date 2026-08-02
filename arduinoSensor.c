@@ -181,6 +181,14 @@ int arduino_startStream(ArduinoSerialConfig * context)
   int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
   context->serial_fd = serialport_init(context->port_name,context->baud_rate,pico2Mode);
 
+  //Ask the lighting controller for its version banner first. The reply lands
+  //asynchronously in the read loop below and gates every multi-character command
+  //we might send afterwards: a pre-1.33 controller would execute the individual
+  //characters of "S031425" as separate commands and end up with its lights in an
+  //arbitrary state. The Teensy shares this start path but has no such protocol.
+  if (strstr(context->csv_name,"controller")!=0)
+     { arduino_probeControllerVersion(context); }
+
   //Send Start Command!
   char buffer[]={"i\n"};
   int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
@@ -230,6 +238,109 @@ int arduino_signalNewFrame(ArduinoSerialConfig * context)
     }
   }
   return 0;
+}
+
+
+int arduino_controllerSupportsExposureLock(const ArduinoSerialConfig * context)
+{
+  if (context==0) { return 0; }
+  if (context->controllerVersionMajor > 1)  { return 1; }
+  if (context->controllerVersionMajor == 1) { return (context->controllerVersionMinor >= 33); }
+  return 0; //no banner seen -> assume legacy and stay on the '+' path
+}
+
+int arduino_probeControllerVersion(ArduinoSerialConfig * context)
+{
+  if (context==0)                   { return 0; }
+  if (!context->global->useArduino) { return 0; }
+
+  char buffer[]={"v\n"};
+  int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
+  return (n>0);
+}
+
+int arduino_enterExposureLockedMode(ArduinoSerialConfig * context)
+{
+  if (context==0)                 { return 0; }
+  if (!context->global->useArduino) { return 0; }
+  if (!arduino_controllerSupportsExposureLock(context)) { return 0; }
+
+  char buffer[]={"e\n"};
+  int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
+  if (n<=0)
+  {
+    fprintf(stderr,RED "Failed handing light sequencing to the controller (%d)\n" NORMAL,n);
+    return 0;
+  }
+  fprintf(stderr,GREEN "Controller now owns light sequencing (one step per exposure)\n" NORMAL);
+  return 1;
+}
+
+int arduino_setLightOnCeiling(ArduinoSerialConfig * context, unsigned int microseconds)
+{
+  if (context==0)                 { return 0; }
+  if (!context->global->useArduino) { return 0; }
+  if (!arduino_controllerSupportsExposureLock(context)) { return 0; }
+
+  char buffer[32]={0};
+  int len = snprintf(buffer,sizeof(buffer),"E%u\n",microseconds);
+  int n = write(context->serial_fd, buffer, len);
+  if (n<=0)
+  {
+    fprintf(stderr,RED "Failed setting light-on ceiling (%d)\n" NORMAL,n);
+    return 0;
+  }
+  fprintf(stderr,"Requested controller light-on ceiling of %u usec (controller hard-clamps this)\n",microseconds);
+  return 1;
+}
+
+int arduino_sendLightSelect(ArduinoSerialConfig * context, int lightIndex)
+{
+  if (context==0)                   { return 0; }
+  if (!context->global->useArduino) { return 0; }
+  if (lightIndex<0)                 { return 0; }
+  if (lightIndex>8)                 { return 0; } //'1'..'9' is all the wire protocol has
+
+  //Deliberately no version gate: single-digit light selection predates every other
+  //command here and behaves identically on the Nano and on the Pico.
+  char buffer[3] = { (char)('1' + lightIndex), '\n', 0 };
+  int n = write(context->serial_fd, buffer, 2);
+  if (n<=0)
+  {
+    fprintf(stderr,RED "Failed selecting light %d on %s (%d)\n" NORMAL,lightIndex+1,context->port_name,n);
+    return 0;
+  }
+  return 1;
+}
+
+int arduino_sendLightSchedule(ArduinoSerialConfig * context, const unsigned char * schedule, int length)
+{
+  if (context==0)                   { return 0; }
+  if (schedule==0)                  { return 0; }
+  if (length<=0)                    { return 0; }
+  if (!context->global->useArduino) { return 0; }
+  if (!arduino_controllerSupportsExposureLock(context)) { return 0; }
+
+  //"S" + one digit per entry + "\n" + NUL
+  char buffer[64]={0};
+  if (length > (int) sizeof(buffer)-3) { length = (int) sizeof(buffer)-3; }
+
+  int at = 0;
+  buffer[at++] = 'S';
+  for (int i=0; i<length; i++)
+  {
+    if (schedule[i]>9) { continue; } //single-digit protocol, 6 COBs so this cannot legitimately trip
+    buffer[at++] = (char) ('0' + schedule[i]);
+  }
+  buffer[at++] = '\n';
+
+  int n = write(context->serial_fd, buffer, at);
+  if (n<=0)
+  {
+    fprintf(stderr,RED "Failed sending light schedule to %s (%d)\n" NORMAL,context->port_name,n);
+    return 0;
+  }
+  return 1;
 }
 
 
@@ -379,11 +490,96 @@ static int arduino_call_string_callback(ArduinoSerialConfig *arduino_config,unsi
 }
 
 
+/* Return a pointer just past the Nth comma of `line`, or NULL if it has fewer.
+ * Used to reach the Rev 1.33 strobe fields without disturbing the 12-field parse
+ * that the legacy controller callback still relies on. */
+static const char * arduino_field(const char *line, int fieldIndex)
+{
+    const char *p = line;
+    for (int i=0; i<fieldIndex; i++)
+    {
+        p = strchr(p, ',');
+        if (p==0) { return 0; }
+        p++;
+    }
+    return p;
+}
+
+/* Extract the Rev 1.33 strobe tail and notify the registered hook on each NEW
+ * strobe. The controller line is:
+ *   dev_ts,b1,b2,d0,d1,d2,L0..L5,strobeCounter,strobeLight,subs,starved,wdt
+ * so strobeCounter is field 12 and strobeLight is field 13 (0-indexed).
+ * Pre-1.33 firmware simply lacks these fields and this becomes a no-op. */
+static void arduino_process_strobe_fields(ArduinoSerialConfig *config, const char *line)
+{
+    const char *p = arduino_field(line, 12);
+    if (p==0) { return; }
+
+    unsigned long counter = 0;
+    int light = -1;
+    if (sscanf(p, "%lu,%d", &counter, &light) != 2) { return; }
+
+    config->haveStrobeFields = 1;
+
+    if (counter == config->lastStrobeCounter) { return; } //same strobe, nothing new
+    config->lastStrobeCounter = counter;
+    config->lastStrobeLight   = light;
+
+    if (config->strobeCallback)
+    {
+        void (*strobe_func)(void *, unsigned long, int);
+        memcpy(&strobe_func, &config->strobeCallback, sizeof(strobe_func));
+        strobe_func(config->strobeUserData, counter, light);
+    }
+}
+
+/* Emit the controller.csv header, sized to the row format this controller actually
+ * produces.
+ *
+ * The header cannot be written at file-open time: how many columns a controller
+ * emits depends on its firmware, and that is not known until the first data line
+ * arrives. Rev 1.33 appends five strobe/thermal fields; the Nano (0.28) and Pico
+ * 1.32 emit the original twelve. Writing the wide header unconditionally produced
+ * a header/row column mismatch for every pre-1.33 board. */
+static void arduino_write_controller_csv_header(ArduinoSerialConfig *config, const char *firstLine)
+{
+    unsigned int fields = 1;
+    for (const char *p=firstLine; *p!=0; p++) { if (*p==',') { fields++; } }
+
+    fprintf(config->csv_file,
+            "timestamp,dev_timestamp,Button1,Button2,Distance1,Distance2,Distance3,"
+            "Light1,Light2,Light3,Light4,Light5,Light6");
+
+    unsigned int named = 12; //fields covered by the columns above
+    if (fields>=17)
+    {
+        //Rev 1.33+ ground truth. StrobeLight is the COB that ACTUALLY fired, which
+        //may differ from Light1..6 when the controller substituted a cooler COB.
+        fprintf(config->csv_file,",StrobeCounter,StrobeLight,Substitutions,Starved,WatchdogTrips");
+        named = 17;
+    }
+
+    //Any columns beyond what we recognise still get a name, so the CSV stays
+    //rectangular against a firmware newer than this build.
+    for (unsigned int extra=named; extra<fields; extra++)
+       { fprintf(config->csv_file,",Extra%u",extra); }
+
+    fprintf(config->csv_file,"\n");
+    config->csvHeaderPending = 0;
+}
+
 int process_generic_string_data(ArduinoSerialConfig *config, char enabledFileOutput,  unsigned long timestamp,const char *lineBuffer, unsigned int lineIndex)
 {
     //We write raw data to disk witout even processing it
     if (enabledFileOutput)
-     { fprintf(config->csv_file, "%lu,%s\n", timestamp, lineBuffer); }
+     {
+      if (config->csvHeaderPending)
+         { arduino_write_controller_csv_header(config,lineBuffer); }
+      fprintf(config->csv_file, "%lu,%s\n", timestamp, lineBuffer);
+     }
+
+    //Rev 1.33+ controllers append the strobe ground truth; feed it to any listener.
+    arduino_process_strobe_fields(config,lineBuffer);
 
     if (config->callback)
                    {
@@ -511,7 +707,10 @@ void *arduino_thread(void *arg)
      if (strstr(config->csv_name,"controller")!=0)
         { if (enabledFileOutput)
            {
-            fprintf(config->csv_file,"timestamp,dev_timestamp,Button1,Button2,Distance1,Distance2,Distance3,Light1,Light2,Light3,Light4,Light5,Light6\n");
+            //The controller header is deferred until the first data line, because its
+            //column count depends on the firmware generation that answered. See
+            //arduino_write_controller_csv_header().
+            config->csvHeaderPending = 1;
 
             //Multizone boards stream full 8x8 (64-zone) ToF frames as extra "x1/x2/x3" lines.
             //Split those out into a separate distances.csv sitting next to controller.csv.
@@ -571,7 +770,16 @@ void *arduino_thread(void *arg)
                  } else
                  if (lineBuffer[0]=='V')
                  {
-                   //Firmware version banner (e.g. "V:1.0") - not CSV data, ignore.
+                   //Firmware version banner (e.g. "V:1.33") - not CSV data, but it
+                   //decides whether this controller can be given the Rev 1.33
+                   //multi-character commands. See arduino_controllerSupportsExposureLock().
+                   int maj=0, min=0;
+                   if (sscanf(lineBuffer,"V:%d.%d",&maj,&min)==2)
+                   {
+                     config->controllerVersionMajor = maj;
+                     config->controllerVersionMinor = min;
+                     fprintf(stderr,"Controller on %s reports firmware v%d.%d\n",config->port_name,maj,min);
+                   }
                  } else
                  {
                    //This is general data that is dumped without being processed

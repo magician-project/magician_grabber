@@ -47,6 +47,17 @@ static char arduinoUseRoundLight[]    = {"r\n"};
 static char arduinoUseDistanceLight[] = {"a\n"};
 static char arduinoUsePatternLight[]  = {"t\n"};
 
+/** Margin added to the camera exposure when telling the controller its maximum
+ *  light-on window. Covers exposure-signal rise/fall and ISR latency so the COB
+ *  is fully on for the whole shutter window, without granting slack the overvolted
+ *  COBs cannot afford. The controller hard-clamps the result regardless. */
+#define LIGHT_ON_CEILING_MARGIN_IN_MICROSECONDS 150
+
+/** Mirror of LIGHT_HARD_MAX_ON_US in the controller firmware. Kept here only so
+ *  the host can warn before a capture that the COBs will be cut off mid-exposure;
+ *  the controller enforces its own copy and never trusts this one. Keep in sync. */
+#define LIGHT_ON_CEILING_CONTROLLER_HARD_MAX 1000
+
 
 typedef struct
 {
@@ -63,7 +74,11 @@ typedef struct
     char speak;              /**< When 1, use festival TTS to vocalise the countdown. */
     char silent;             /**< When 1, suppress per-frame progress output to stdout. */
     char unixtime;           /**< When 1, write Unix epoch timestamps instead of human-readable ones. */
-    char manual_trigger_light; /**< When 1, send a light-change command to the Arduino after every captured frame. */
+    char manual_trigger_light; /**< When 1, send a light-change command to the Arduino after every captured frame. Legacy path; superseded by exposure_locked_light. */
+    char exposure_locked_light;/**< When 1, the controller advances the light once per exposure in its own ISR and the host never steps lights per frame. */
+    char polarizationLights;   /**< When 1, run the DoLP/AoLP light policy and upload schedules to the controller. */
+    int  polarizationStride;   /**< Superpixel subsampling stride for the polarization reduction; 0 = default. */
+    int  polarizationDwell;    /**< Consecutive frames each COB is held per cycle; 0 = default. */
 
     // Modules available to use
     char simulate;           /**< When 1, all device threads run in simulation mode (no hardware required). */
@@ -329,7 +344,8 @@ static void print_help()
     printf("  --trigger                 Manually trigger light change after each captured frame.\n");
     printf("  --notrigger               Do not manually trigger light change after each captured frame.\n");
     printf("  --size <width> <height>   Set the camera resolution in pixels.\n");
-    printf("  --exposure <microsec>     Set camera exposure time in microseconds.\n");
+    printf("  --exposure <microsec>     Set camera exposure time in microseconds (def. 650, which is\n");
+    printf("                            what the downstream neural networks are tuned for).\n");
     printf("  --gain <value>            Set camera gain.\n");
     printf("  --fps <Hz>                Set the camera frame rate (use --ram for FPS >10).\n");
     printf("  --blacklevel <value>      Set camera black level.\n");
@@ -343,6 +359,13 @@ static void print_help()
     printf("  --features                Enable force sensor features calculation.\n");
     printf("  --accelerometer           Enable accelerometer (Teensy device).\n");
     printf("  --distance                Enable distance sensor (Arduino device).\n");
+    printf("  --exposure-locked         Let the controller advance lights itself, one step per\n");
+    printf("                            camera exposure, instead of the host sending '+' per frame.\n");
+    printf("                            Requires controller firmware >= 1.33; ignored otherwise.\n");
+    printf("  --polarization            Choose lights from per-frame DoLP/AoLP measurements.\n");
+    printf("                            Implies --exposure-locked.\n");
+    printf("  --polstride <n>           Polarization subsampling stride (default 8; 1 = every superpixel).\n");
+    printf("  --poldwell <n>            Frames each light is held per cycle (default 3).\n");
     printf("  --dlight                  Use lighting based on distance sensor.\n");
     printf("  --rlight                  Use round-robin lighting.\n");
     printf("  --tlight                  Use patterned lighting.\n");
@@ -609,6 +632,31 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->arduinoExtraCommand = arduinoUsePatternLight;
             fprintf(stderr,"Using Lighting based on patterned light\n");
+        }
+        else if (strcmp(argv[i],"--exposure-locked")==0)
+        {
+            cfg->exposure_locked_light = 1;
+            cfg->manual_trigger_light  = 0;
+            fprintf(stderr,"Handing light sequencing to the controller (needs firmware >= 1.33)\n");
+        }
+        else if (strcmp(argv[i],"--polarization")==0)
+        {
+            //The polarization policy works by uploading schedules, which only exists
+            //in the exposure-locked path, so selecting it implies that path.
+            cfg->polarizationLights    = 1;
+            cfg->exposure_locked_light = 1;
+            cfg->manual_trigger_light  = 0;
+            fprintf(stderr,"Using polarization (DoLP/AoLP) driven lighting\n");
+        }
+        else if (strcmp(argv[i],"--polstride")==0)
+        {
+            cfg->polarizationStride = atoi(argv[i+1]);
+            fprintf(stderr,"Polarization subsampling stride set to %d\n",cfg->polarizationStride);
+        }
+        else if (strcmp(argv[i],"--poldwell")==0)
+        {
+            cfg->polarizationDwell = atoi(argv[i+1]);
+            fprintf(stderr,"Polarization dwell set to %d frames per COB\n",cfg->polarizationDwell);
         }
         else if (strcmp(argv[i],"--rt")==0)
         {

@@ -29,6 +29,7 @@
 #include "gigeCameraSensor.h"
 #include "resolveUSBDevice.h"
 #include "tactileFeatures.h"
+#include "polarizationLights.h"
 
 //Shared memory for streaming
 #include "tactileStreamer.h"
@@ -84,8 +85,16 @@ int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 
 
 //These is a callback that triggers the next light
+//
+//LEGACY PATH. Kept because pre-1.33 controllers have no other way to be stepped:
+//they own no notion of the exposure schedule, so the host must nudge them once per
+//frame. It is inherently latency-bound (the '+' has to cross the GigE readout, the
+//USB-CDC link and the controller's loop tick before the next exposure begins), which
+//is why --exposure-locked exists for firmware that can sequence itself. Selected
+//automatically at startup based on the controller's reported version.
 static int camera_callback_next_light(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
 {
+    (void) timestamp; (void) dataAsImage;
     if (config!=NULL)
     {
       if (config->global!=NULL)
@@ -97,6 +106,26 @@ static int camera_callback_next_light(GiGECameraConfig *config, unsigned long ti
          }
       }
     }
+    return 0;
+}
+
+//Global driver state, reachable from both the camera callback and the serial thread.
+static PolLightDriver polarizationDriver = {0};
+
+//Bridges the controller's per-strobe report into the polarization driver so frames
+//are attributed to the COB that genuinely fired rather than to a host-side guess.
+static void controller_strobe_callback(void *userData, unsigned long counter, int light)
+{
+    (void) counter;
+    polarizationDriverNoteStrobe((PolLightDriver *) userData, light);
+}
+
+//Runs the polarization policy on each captured frame. Sends nothing per frame in the
+//common case: a new schedule only goes out once a full measurement cycle completes.
+static int camera_callback_polarization(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
+{
+    (void) config; (void) timestamp;
+    polarizationDriverProcessFrame(&polarizationDriver, dataAsImage);
     return 0;
 }
 
@@ -154,7 +183,11 @@ int main (int argc, char **argv)
     // Camera Default settings
     cfg.width      = 2448;
     cfg.height     = 2048;
-    cfg.exposure   = 450; // 0 means no setting
+    // 650 µs is the exposure the downstream neural networks are tuned for, so it is
+    // the default rather than a starting point. Override it for experiments or to
+    // compensate for ambient light; the host forwards whatever is set to the
+    // controller as its light-on ceiling, and the controller clamps that in turn.
+    cfg.exposure   = 650; // 0 means no setting
     cfg.gain       = 0.0;
     cfg.blackLevel = 0.0;
     cfg.frameRate  = 10.0; //Each image is 4.5MB,
@@ -217,11 +250,9 @@ int main (int argc, char **argv)
     //Make arduino_cfg visible!
     cfg.arduino_cfg = (void*) &arduino_config;
 
-    //Make each camera frame trigger next light!
-    if (cfg.manual_trigger_light)
-    {
-     camera_config.callback = (void*) camera_callback_next_light;
-    }
+    //The camera callback is chosen after the controller has identified itself; see
+    //the light-control negotiation further down. Leaving it unset until then keeps
+    //a legacy controller from being stepped by a mode it does not implement.
 
     //Copy teensy/arduino port
     snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
@@ -313,6 +344,114 @@ int main (int argc, char **argv)
                                                { fprintf(stderr,RED "Teensy port not found\n" NORMAL); exit(1); }*/
                            pthread_create(&teensy_tid,    NULL, arduino_thread,    &teensy_config);
                          }
+
+    //=============================================================
+    //  Light control negotiation
+    //
+    //  Which lighting path we can use depends on what the controller is. Rev 1.33+
+    //  can sequence itself off the exposure signal; anything older has to be
+    //  stepped by the host once per frame. We must know which BEFORE the camera
+    //  starts, because sending the newer multi-character commands to an older
+    //  controller does not fail harmlessly — it executes their individual
+    //  characters as separate legacy commands.
+    //=============================================================
+    if (cfg.useArduino)
+    {
+        //Wait briefly for the version banner requested by arduino_startStream().
+        unsigned int waited = 0;
+        while ( (arduino_config.controllerVersionMajor==0) && (waited<200) && (cfg.keep_running) )
+             { usleep(10000); waited++; }
+
+        int modernController = arduino_controllerSupportsExposureLock(&arduino_config);
+
+        if (!modernController)
+        {
+            fprintf(stderr,YELLOW "Controller did not report firmware >= 1.33"
+                                  " - using the legacy per-frame stepping path\n" NORMAL);
+
+            //Exposure-locked sequencing is a hardware capability, not a firmware one:
+            //the legacy boards have no camera exposure input to lock to. It cannot be
+            //emulated, so it is dropped.
+            if (cfg.exposure_locked_light && !cfg.polarizationLights)
+            {
+              fprintf(stderr,YELLOW "  (--exposure-locked needs a controller with an exposure input; ignoring it)\n" NORMAL);
+            }
+            cfg.exposure_locked_light = 0;
+
+            //Polarization selection, by contrast, works fine: the policy is host-side,
+            //and a legacy board is driven by naming the COB once per frame instead of
+            //uploading a schedule. Same decisions, later delivery.
+            if (cfg.polarizationLights)
+            {
+              fprintf(stderr,YELLOW "  (polarization will step the lights per frame rather than by exposure)\n" NORMAL);
+              cfg.manual_trigger_light = 0;   //the driver does the stepping itself
+            }
+            else
+            {
+              cfg.manual_trigger_light = 1;
+            }
+        }
+
+        //Exposure vs light window. Both firmware generations cap the light-on time at
+        //1000us, so this check applies regardless of which controller answered - only
+        //the ability to *narrow* the window with 'E' is version-dependent.
+        if (cfg.exposure!=0)
+        {
+          unsigned int requestedCeiling = cfg.exposure + LIGHT_ON_CEILING_MARGIN_IN_MICROSECONDS;
+
+          //If the controller's clamp bites, the COBs go dark before the shutter closes
+          //and the tail of every exposure is unlit - which reads as an underexposed
+          //dataset rather than a lighting fault, so say so up front rather than letting
+          //it pass silently. --exposure is expected to be tuned per experiment, so this
+          //is a live path, not a theoretical one.
+          if (requestedCeiling > LIGHT_ON_CEILING_CONTROLLER_HARD_MAX)
+          {
+            fprintf(stderr,YELLOW "Exposure %u us needs a %u us light window, but the controller"
+                                  " hard-caps at %u us.\n" NORMAL,
+                    cfg.exposure, requestedCeiling, LIGHT_ON_CEILING_CONTROLLER_HARD_MAX);
+            fprintf(stderr,YELLOW "  The COBs will switch off ~%u us before the shutter closes."
+                                  " Lower --exposure, or raise the\n"
+                                  "  firmware ceiling only if the COBs can take it.\n" NORMAL,
+                    requestedCeiling - LIGHT_ON_CEILING_CONTROLLER_HARD_MAX);
+          }
+
+          //SAFETY: tell the controller how long the COBs may be driven. It also meters
+          //its per-COB thermal budget in units of this ceiling, so sending the real
+          //exposure keeps the accounting honest. The controller hard-clamps whatever we
+          //ask for, and ignores this entirely on pre-1.33 firmware.
+          if (modernController)
+             { arduino_setLightOnCeiling(&arduino_config,requestedCeiling); }
+        }
+
+        if (modernController && cfg.exposure_locked_light)
+        {
+          arduino_enterExposureLockedMode(&arduino_config);
+          cfg.manual_trigger_light = 0;
+        }
+    }
+    else
+    {
+        //No controller in the loop at all.
+        cfg.exposure_locked_light = 0;
+        cfg.polarizationLights    = 0;
+        cfg.manual_trigger_light  = 0;
+    }
+
+    if (cfg.polarizationLights)
+    {
+        polarizationDriverStart(&polarizationDriver, (void*) &arduino_config,
+                                cfg.polarizationStride, cfg.polarizationDwell,
+                                !arduino_controllerSupportsExposureLock(&arduino_config));
+        //Ground truth for frame->COB attribution comes from the controller, not from
+        //a host-side model of the schedule, so dropped frames cannot desynchronise it.
+        arduino_config.strobeCallback = (void*) controller_strobe_callback;
+        arduino_config.strobeUserData = (void*) &polarizationDriver;
+        camera_config.callback        = (void*) camera_callback_polarization;
+    }
+    else if (cfg.manual_trigger_light)
+    {
+        camera_config.callback = (void*) camera_callback_next_light;
+    }
 
     // Start Threads
     if (cfg.useCamera)   {
@@ -412,6 +551,10 @@ int main (int argc, char **argv)
 
          if (cfg.useArduino)  { if (arduino_config.receivedDataFrames==0) {printf(RED);}
                                printf("|Arduino "); printHz(arduino_config.Hz); printf(NORMAL); }
+         if (cfg.polarizationLights)
+                              { char polSummary[256]={0};
+                                polarizationDriverSummary(&polarizationDriver,polSummary,sizeof(polSummary));
+                                printf("%s",polSummary); }
          if (cfg.useTeensy)   { if (teensy_config.receivedDataFrames==0) {printf(RED);}
                                printf("|Teensy ");  printHz(teensy_config.Hz); printf(NORMAL); }
          if (cfg.useATIForce) { if (atinetft_config.receivedDataFrames==0) {printf(RED);}
