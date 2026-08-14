@@ -80,6 +80,7 @@ typedef struct
 {
     int    enabled;          /**< 0 = module inactive. */
     int    lightCount;       /**< COBs available; normally POL_MAX_LIGHTS. */
+    unsigned char skipMask;  /**< Bit i set = COB i excluded by --skip. Such a COB is never scheduled, never ranked and never reported as best; a cycle completes without it. */
     int    stride;           /**< Superpixel subsampling stride. Larger = faster, noisier. */
     int    dwell;            /**< Consecutive frames each COB is held during a probe cycle. */
     double targetS0;         /**< Desired mean intensity; scores penalise deviation from this. */
@@ -155,8 +156,10 @@ int polarizationAnalyseFrame(const struct Image *image, int stride, PolFrameStat
  *  @param legacyStepping 1 for a controller that cannot hold a schedule, so the
  *                      driver names the COB once per frame instead. See the field
  *                      of the same name in PolLightDriver.
+ *  @param skipMask     Bit i set = COB i is excluded (--skip); 0 uses them all. At
+ *                      least one COB must remain, which parse_arguments enforces.
  *  @return 1 on success. */
-int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping);
+int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping, unsigned char skipMask);
 
 /** Record the COB that the controller reports as having actually fired.
  *  Call from the controller's serial callback, once per reported strobe.

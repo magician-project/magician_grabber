@@ -156,40 +156,60 @@ static void polBuildOppositeOrder(int lightCount, unsigned char *order)
     }
 }
 
+/* Is this COB still in play, or did --skip exclude it? */
+static int polLightAllowed(const PolLightDriver *drv, int light)
+{
+    if (light < 0)                { return 0; }
+    if (light >= drv->lightCount) { return 0; }
+    return (((drv->skipMask >> light) & 1) == 0);
+}
+
 /* Assemble the next schedule: every COB gets `dwell` consecutive slots so the
  * attribution window has a stable middle, and the best-scoring COBs get bonus
  * dwell blocks appended.
  *
- * Every COB always appears. That is deliberate and is the host-side half of the
- * thermal story: full photometric coverage is preserved for offline processing,
- * and no policy outcome — however degenerate — can concentrate the strobe load on
- * a single COB. The firmware's per-COB leaky bucket is the hard backstop; this is
- * the soft one that keeps the backstop from ever having to engage. */
+ * Every COB *that --skip left in play* always appears. That is deliberate and is
+ * the host-side half of the thermal story: full photometric coverage is preserved
+ * for offline processing, and no policy outcome — however degenerate — can
+ * concentrate the strobe load on a single COB. The firmware's per-COB leaky bucket
+ * is the hard backstop; this is the soft one that keeps the backstop from ever
+ * having to engage. Excluding a COB narrows the coverage, never the thermal
+ * spreading: the load lands on more of the remaining COBs, not on fewer. */
 static int polBuildSchedule(PolLightDriver *drv)
 {
     unsigned char order[POL_MAX_LIGHTS];
     polBuildOppositeOrder(drv->lightCount, order);
 
+    /* Drop excluded COBs, keeping the opposite-pair ordering of whatever survives.
+     * Compacting in place is safe: the write index never overtakes the read one. */
+    int orderLen = 0;
+    for (int i = 0; i < drv->lightCount; i++)
+    {
+        if (polLightAllowed(drv, order[i])) { order[orderLen++] = order[i]; }
+    }
+
     int len = 0;
 
-    for (int i = 0; i < drv->lightCount && len + drv->dwell <= POL_MAX_SCHEDULE; i++)
+    for (int i = 0; i < orderLen && len + drv->dwell <= POL_MAX_SCHEDULE; i++)
     {
         for (int d = 0; d < drv->dwell; d++) { drv->schedule[len++] = order[i]; }
     }
 
-    /* Rank COBs by score, best first (selection sort; six elements). */
+    /* Rank the COBs still in play by score, best first (selection sort; six at most). */
     int ranked[POL_MAX_LIGHTS];
-    for (int i = 0; i < drv->lightCount; i++) { ranked[i] = i; }
-    for (int i = 0; i < drv->lightCount - 1; i++)
+    int rankedLen = 0;
+    for (int i = 0; i < drv->lightCount; i++)
+    { if (polLightAllowed(drv, i)) { ranked[rankedLen++] = i; } }
+    for (int i = 0; i < rankedLen - 1; i++)
     {
-        for (int j = i + 1; j < drv->lightCount; j++)
+        for (int j = i + 1; j < rankedLen; j++)
         {
             if (drv->score[ranked[j]] > drv->score[ranked[i]])
             { int t = ranked[i]; ranked[i] = ranked[j]; ranked[j] = t; }
         }
     }
 
-    for (int b = 0; b < POL_BONUS_SLOTS && b < drv->lightCount; b++)
+    for (int b = 0; b < POL_BONUS_SLOTS && b < rankedLen; b++)
     {
         if (len + drv->dwell > POL_MAX_SCHEDULE) { break; }
         for (int d = 0; d < drv->dwell; d++)
@@ -283,13 +303,14 @@ static void polScoreCycle(PolLightDriver *drv)
 //  Public entry points
 // =============================================================================
 
-int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping)
+int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping, unsigned char skipMask)
 {
     if (drv == 0) { return 0; }
     memset(drv, 0, sizeof(PolLightDriver));
 
     drv->enabled        = 1;
     drv->lightCount     = POL_MAX_LIGHTS;
+    drv->skipMask       = skipMask;
     drv->stride         = (stride > 0) ? stride : POL_DEFAULT_STRIDE;
     drv->dwell          = (dwell  > 0) ? dwell  : POL_DEFAULT_DWELL;
     drv->targetS0       = POL_DEFAULT_TARGET_S0;
@@ -380,13 +401,16 @@ int polarizationDriverProcessFrame(PolLightDriver *drv, const struct Image *imag
     drv->sampleCount[light]    += 1;
     drv->framesAttributed++;
 
-    /* A cycle is complete once every COB has contributed at least one sample.
-     * Keying off coverage rather than a frame count means dropped frames delay
-     * the update instead of corrupting it. */
+    /* A cycle is complete once every COB still in play has contributed at least one
+     * sample. Keying off coverage rather than a frame count means dropped frames
+     * delay the update instead of corrupting it — and an excluded COB has to be
+     * left out of the test, or it would never contribute and the cycle would never
+     * close. */
     int cycleComplete = 1;
     for (int i = 0; i < drv->lightCount; i++)
     {
-        if (drv->sampleCount[i] == 0) { cycleComplete = 0; break; }
+        if (!polLightAllowed(drv, i))  { continue; }
+        if (drv->sampleCount[i] == 0)  { cycleComplete = 0; break; }
     }
 
     int uploaded = 0;
@@ -407,9 +431,16 @@ void polarizationDriverSummary(const PolLightDriver *drv, char *buffer, unsigned
     if (buffer == 0 || bufferSize == 0) { return; }
     if (drv == 0 || !drv->enabled) { buffer[0] = 0; return; }
 
-    int best = 0;
-    for (int i = 1; i < drv->lightCount; i++)
-    { if (drv->score[i] > drv->score[best]) { best = i; } }
+    /* An excluded COB can still hold a score from before it was excluded, and is
+     * never a legitimate answer to "which COB is winning", so start from one that
+     * is in play. */
+    int best = -1;
+    for (int i = 0; i < drv->lightCount; i++)
+    {
+        if (!polLightAllowed(drv, i)) { continue; }
+        if (best < 0 || drv->score[i] > drv->score[best]) { best = i; }
+    }
+    if (best < 0) { buffer[0] = 0; return; }
 
     snprintf(buffer, bufferSize, "|Pol best L%d (%.2f) sched %lu attr %lu/%lu",
              best + 1, drv->score[best], drv->schedulesSent,
