@@ -41,7 +41,7 @@ fi
 
 
 #Build tactile_processor libraries
-cd tactile_processor
+cd src/tactile_processor
 ./build.sh
 
 cd "$THISDIR"

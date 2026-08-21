@@ -43,42 +43,42 @@
 			<Add option="`pkg-config --libs aravis-0.10 `" />
 			<Add option="-lpthread" />
 		</Linker>
-		<Unit filename="arduinoSensor.c">
+		<Unit filename="src/arduinoSensor.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="arduinoSensor.h" />
-		<Unit filename="atiForceSensor.c">
+		<Unit filename="src/arduinoSensor.h" />
+		<Unit filename="src/atiForceSensor.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="atiForceSensor.h" />
-		<Unit filename="callbacks.h" />
-		<Unit filename="colors.h" />
-		<Unit filename="common.h" />
-		<Unit filename="gigeCameraSensor.c">
+		<Unit filename="src/atiForceSensor.h" />
+		<Unit filename="src/callbacks.h" />
+		<Unit filename="src/colors.h" />
+		<Unit filename="src/common.h" />
+		<Unit filename="src/gigeCameraSensor.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="gigeCameraSensor.h" />
-		<Unit filename="imageStreamer.c">
+		<Unit filename="src/gigeCameraSensor.h" />
+		<Unit filename="src/imageStreamer.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="imageStreamer.h" />
-		<Unit filename="multiModalGrabber.c">
+		<Unit filename="src/imageStreamer.h" />
+		<Unit filename="src/multiModalGrabber.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="performance.h" />
-		<Unit filename="resolveUSBDevice.h" />
-		<Unit filename="sharedMemoryVideoBuffers.c">
+		<Unit filename="src/performance.h" />
+		<Unit filename="src/resolveUSBDevice.h" />
+		<Unit filename="src/sharedMemoryVideoBuffers.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="sharedMemoryVideoBuffers.h" />
-		<Unit filename="tactileFeatures.c">
+		<Unit filename="src/sharedMemoryVideoBuffers.h" />
+		<Unit filename="src/tactileFeatures.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="tactileFeatures.h" />
-		<Unit filename="tactileStreamer.c">
+		<Unit filename="src/tactileFeatures.h" />
+		<Unit filename="src/tactileStreamer.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="tactileStreamer.h" />
+		<Unit filename="src/tactileStreamer.h" />
 		<Extensions>
 			<lib_finder disable_auto="1" />
 		</Extensions>

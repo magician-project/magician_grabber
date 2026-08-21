@@ -486,7 +486,7 @@ int main (int argc, char **argv)
 
     if (cfg.viewer)
     {
-        int i=system("viewer/viewer.sh&");
+        int i=system("src/viewer/viewer.sh&");
         if (i!=0) { fprintf(stderr,RED "Failed executing viewer!\n" NORMAL); }
     }
 

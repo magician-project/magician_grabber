@@ -10,11 +10,31 @@ A multi-modal data acquisition tool for robotic manipulation research. Synchrono
 
 ## Table of Contents
 
+- [Repository Layout](#repository-layout)
 - [Dependencies & Build](#dependencies--build)
 - [Binaries](#binaries)
 - [Command-Line Options](#command-line-options)
 - [Usage Examples](#usage-examples)
 - [Camera Calibration](#camera-calibration)
+
+---
+
+## Repository Layout
+
+All source lives under `src/`; the build still runs from the repository root and
+the binaries are still written there, so every command below is unchanged.
+
+```
+src/                  C/C++ sources for the grabber
+  codecs/             image encoders/decoders (png, jpg, pnm, pzp, ...)
+  tactile_processor/  real-time tactile feature extraction (C++)
+  viewer/             live shared-memory viewer (Python)
+  qr_emmiter/         on-screen QR timestamp emitter, for clock sync
+  standalone_atift/   standalone ATI NetFT logger
+calib/                camera calibration files
+docker/               container build for the ROS 2 node
+scripts/              build / update / debug helpers
+```
 
 ---
 
@@ -52,8 +72,8 @@ sudo ninja install
 | Binary | Built with | Description |
 |---|---|---|
 | `magician_grabber` | `make` | Standalone grabber — camera, force, accelerometer, Arduino. |
-| `magician_grabber_tactile` | `make` | Same as above plus real-time [tactile feature extraction](https://github.com/magician-project/magician_grabber/tree/main/tactile_processor). |
-| `rclcpp_magician_grabber` | `colcon` | Grabber with [ROS 2 topic publishing](https://github.com/magician-project/magician_grabber/blob/main/ros_magician_grabber.cpp#L122). Place the package in your ROS 2 workspace and build with `colcon build`. |
+| `magician_grabber_tactile` | `make` | Same as above plus real-time [tactile feature extraction](https://github.com/magician-project/magician_grabber/tree/main/src/tactile_processor). |
+| `rclcpp_magician_grabber` | `colcon` | Grabber with [ROS 2 topic publishing](https://github.com/magician-project/magician_grabber/blob/main/src/ros_magician_grabber.cpp#L122). Place the package in your ROS 2 workspace and build with `colcon build`. |
 
 All three binaries accept the same command-line parameters described below.
 

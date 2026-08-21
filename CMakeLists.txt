@@ -26,21 +26,21 @@ pkg_check_modules(ARAVIS REQUIRED aravis-0.10)
 
 
 set(SRC
-ros_magician_grabber.cpp
-arduinoSensor.c
-atiForceSensor.c
-gigeCameraSensor.c
-sharedMemoryVideoBuffers.c
-imageStreamer.c
-tactileFeatures.c
-tactileStreamer.c
-codecs/pngInput.c
+src/ros_magician_grabber.cpp
+src/arduinoSensor.c
+src/atiForceSensor.c
+src/gigeCameraSensor.c
+src/sharedMemoryVideoBuffers.c
+src/imageStreamer.c
+src/tactileFeatures.c
+src/tactileStreamer.c
+src/codecs/pngInput.c
 )
 
-set_source_files_properties(ros_magician_grabber.cpp PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/ros_magician_grabber.cpp PROPERTIES LANGUAGE CXX)
 
 set(TACTILE_SRC 
-tactile_processor/TactileProcessor.cpp
+src/tactile_processor/TactileProcessor.cpp
 )
 
 add_executable(magician_grabber ${SRC} ) #${TACTILE_SRC} 
