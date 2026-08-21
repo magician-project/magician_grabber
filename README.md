@@ -152,6 +152,32 @@ Configuration is entirely through command-line flags:
 | `--polarization` | Choose lights from per-frame DoLP/AoLP measurements. Implies `--exposure-locked`. |
 | `--polstride <n>` | Polarization subsampling stride (default 8; 1 = every superpixel). |
 | `--poldwell <n>` | Frames each light is held per measurement cycle (default 3). |
+| `--skip <n[,n…]>` | Leave light *n* (1–6) out of the capture. Repeatable and cumulative. |
+| `--skipadvance` | Skip by stepping over an excluded light rather than by naming the light to use. |
+
+#### Skipping a light
+
+`--skip 5` drops COB 5 from whatever lighting path is in use — a dead COB, one
+that flares off a specular part of the scene, one whose light path is blocked by
+the fixture. It accumulates, so `--skip 5 --skip 6` and `--skip 5,6` are the same
+thing, and lights are always numbered the way they are on the board and in
+`controller.csv`: 1–6. Excluding all six is refused rather than run.
+
+How the exclusion is enforced depends on who is choosing the lights:
+
+| Path | Mechanism |
+|---|---|
+| Exposure-locked / polarization (firmware ≥ 1.33) | The excluded COB is left out of the uploaded schedule. Nothing happens per frame and nothing can drift. |
+| Per-frame stepping (default, any firmware) | The host names the COB it wants (`1`–`6`) instead of sending `+`. One byte per frame either way, but `+` lands on whatever the board decides comes next and there is no reply in time to veto it before the shutter opens. |
+| `--dlight` / `--tlight`, or explicit `--skipadvance` | The host sends an extra `+` whenever the controller *reports* an excluded COB as lit. Costs one wasted step, but the firmware keeps choosing the order — which is the whole point of those modes. |
+
+The `--skipadvance` mechanism keys off the `Light1`–`Light6` columns, which every
+firmware generation emits, so it works on a Nano and on a Pico alike. It reacts to
+what the controller reports rather than to a host-side model of where its cursor
+ought to be, so a dropped `+` cannot desynchronise it: the next reported row simply
+re-states the truth. One nudge is sent per step onto an excluded COB, however many
+rows report it, and if the COB it lands on is also excluded the next row pushes
+again.
 
 #### Who sequences the lights
 

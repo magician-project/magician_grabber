@@ -58,6 +58,11 @@ static char arduinoUsePatternLight[]  = {"t\n"};
  *  the controller enforces its own copy and never trusts this one. Keep in sync. */
 #define LIGHT_ON_CEILING_CONTROLLER_HARD_MAX 1000
 
+/** COBs wired to the controller board. They are 0-indexed internally and 1-indexed
+ *  everywhere the user can see them, matching the "1".."6" wire protocol. Mirror of
+ *  NUMBER_OF_LIGHTS in the firmware. */
+#define LIGHTS_ON_CONTROLLER 6
+
 
 typedef struct
 {
@@ -79,6 +84,10 @@ typedef struct
     char polarizationLights;   /**< When 1, run the DoLP/AoLP light policy and upload schedules to the controller. */
     int  polarizationStride;   /**< Superpixel subsampling stride for the polarization reduction; 0 = default. */
     int  polarizationDwell;    /**< Consecutive frames each COB is held per cycle; 0 = default. */
+
+    unsigned char lightSkipMask; /**< Bit i set = COB i+1 excluded by --skip. Such a COB is never scheduled, never selected and never scored. 0 = use them all. */
+    char skipByAdvancing;        /**< When 1, skip by pushing the controller past an excluded COB with an extra '+' rather than by naming the COB we want. Keeps a firmware-owned pattern intact; see --skipadvance. */
+    char firmwareOwnedLightOrder;/**< When 1, the ORDER of the COBs is decided on the controller and cannot be reproduced host-side (--dlight, --tlight), so --skip must veto rather than dictate. Round-robin is not marked: naming COBs in ascending order reproduces it exactly. */
 
     // Modules available to use
     char simulate;           /**< When 1, all device threads run in simulation mode (no hardware required). */
@@ -328,6 +337,85 @@ static int noOutputDirectory(GlobalConfig *cfg)
   return 1;
 }
 
+/** Has --skip excluded this COB? @param light0 0-indexed COB. */
+static int lightIsSkipped(const GlobalConfig *cfg, int light0)
+{
+    if (cfg==0)                       { return 0; }
+    if (light0<0)                     { return 0; }
+    if (light0>=LIGHTS_ON_CONTROLLER) { return 0; }
+    return (int) ((cfg->lightSkipMask >> light0) & 1);
+}
+
+/** Fill `out` with the 0-indexed COBs --skip has left in play, in ascending order.
+ *  @return how many were written. */
+static int lightBuildAllowedList(const GlobalConfig *cfg, unsigned char *out, int maxOut)
+{
+    int n = 0;
+    for (int i=0; (i<LIGHTS_ON_CONTROLLER) && (n<maxOut); i++)
+    {
+        if (!lightIsSkipped(cfg,i)) { out[n++] = (unsigned char) i; }
+    }
+    return n;
+}
+
+/** Next COB at or after `from` that --skip has left in play, wrapping at the end.
+ *  @return 0-indexed COB, or -1 if every COB is excluded. */
+static int lightNextAllowed(const GlobalConfig *cfg, int from)
+{
+    if (from<0) { from = 0; }
+    for (int step=0; step<LIGHTS_ON_CONTROLLER; step++)
+    {
+        int candidate = (from + step) % LIGHTS_ON_CONTROLLER;
+        if (!lightIsSkipped(cfg,candidate)) { return candidate; }
+    }
+    return -1;
+}
+
+/** Render the COBs still in play as a human-readable 1-indexed list ("1,2,3,4,6"). */
+static void lightDescribeAllowed(const GlobalConfig *cfg, char *buffer, unsigned int bufferSize)
+{
+    if ( (buffer==0) || (bufferSize==0) ) { return; }
+    buffer[0] = 0;
+
+    unsigned int at = 0;
+    for (int i=0; i<LIGHTS_ON_CONTROLLER; i++)
+    {
+        if (lightIsSkipped(cfg,i)) { continue; }
+        int written = snprintf(buffer+at,bufferSize-at,"%s%d",(at!=0)?",":"",i+1);
+        if (written<=0) { break; }
+        at += (unsigned int) written;
+        if (at>=bufferSize) { break; }
+    }
+}
+
+/** Parse a --skip argument. Every digit in the string is taken as a 1-indexed light
+ *  number, so "--skip 5", "--skip 5,6" and "--skip 56" all say the same thing — the
+ *  lights are single digits on the wire, so there is no two-digit reading to lose.
+ *  The flag is repeatable and the exclusions accumulate. */
+static void parseLightSkipList(GlobalConfig *cfg, const char *list)
+{
+    int found = 0;
+    for (const char *p=list; *p!=0; p++)
+    {
+        if ( (*p<'0') || (*p>'9') ) { continue; } //whatever separator the user typed
+        found = 1;
+
+        int light = (int) (*p - '0');
+        if ( (light<1) || (light>LIGHTS_ON_CONTROLLER) )
+        {
+            fprintf(stderr,YELLOW "--skip: there is no light %d (lights are 1..%d), ignoring it\n" NORMAL,light,LIGHTS_ON_CONTROLLER);
+            continue;
+        }
+
+        cfg->lightSkipMask |= (unsigned char) (1u << (light-1));
+        fprintf(stderr,"Light %d will be skipped\n",light);
+    }
+
+    if (!found)
+    { fprintf(stderr,YELLOW "--skip: \"%s\" holds no light numbers, ignoring it\n" NORMAL,list); }
+}
+
+
 static void print_help()
 {
     printf("Usage: magician_grabber [OPTIONS]\n\n");
@@ -364,6 +452,12 @@ static void print_help()
     printf("                            Requires controller firmware >= 1.33; ignored otherwise.\n");
     printf("  --polarization            Choose lights from per-frame DoLP/AoLP measurements.\n");
     printf("                            Implies --exposure-locked.\n");
+    printf("  --skip <n[,n...]>         Do not use light n (1..%d). Repeatable, and it accumulates,\n",LIGHTS_ON_CONTROLLER);
+    printf("                            so \"--skip 5 --skip 6\" and \"--skip 5,6\" are the same thing.\n");
+    printf("                            Honoured on every lighting path and on every firmware.\n");
+    printf("  --skipadvance             Skip by sending an extra '+' when the controller reports an\n");
+    printf("                            excluded light, instead of naming the light to use. Keeps a\n");
+    printf("                            firmware-owned pattern (--rlight/--tlight/--dlight) intact.\n");
     printf("  --polstride <n>           Polarization subsampling stride (default 8; 1 = every superpixel).\n");
     printf("  --poldwell <n>            Frames each light is held per cycle (default 3).\n");
     printf("  --dlight                  Use lighting based on distance sensor.\n");
@@ -621,6 +715,7 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         else if (strcmp(argv[i],"--dlight")==0)
         {
             cfg->arduinoExtraCommand = arduinoUseDistanceLight;
+            cfg->firmwareOwnedLightOrder = 1; //the distance reading picks the COB, not us
             fprintf(stderr,"Using Lighting based on distance\n");
         }
         else if (strcmp(argv[i],"--rlight")==0)
@@ -631,6 +726,7 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         else if (strcmp(argv[i],"--tlight")==0)
         {
             cfg->arduinoExtraCommand = arduinoUsePatternLight;
+            cfg->firmwareOwnedLightOrder = 1; //the pattern lives in the firmware
             fprintf(stderr,"Using Lighting based on patterned light\n");
         }
         else if (strcmp(argv[i],"--exposure-locked")==0)
@@ -647,6 +743,18 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
             cfg->exposure_locked_light = 1;
             cfg->manual_trigger_light  = 0;
             fprintf(stderr,"Using polarization (DoLP/AoLP) driven lighting\n");
+        }
+        else if (strcmp(argv[i],"--skip")==0)
+        {
+            if (argc>i+1)
+            { parseLightSkipList(cfg,argv[i+1]); }
+            else
+            { fprintf(stderr,"Failed setting skipped light, not enough arguments! \n"); }
+        }
+        else if (strcmp(argv[i],"--skipadvance")==0)
+        {
+            cfg->skipByAdvancing = 1;
+            fprintf(stderr,"Skipped lights will be stepped over rather than bypassed by name\n");
         }
         else if (strcmp(argv[i],"--polstride")==0)
         {
@@ -707,6 +815,31 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
             { fprintf(stderr,"Failed setting tactile stream name, not enough arguments!\n"); }
         }
 }
+
+if (cfg->lightSkipMask!=0)
+{
+  //Nothing downstream has a sane answer for "light the scene with no lights", and
+  //every stepping path would have no COB left to select. Refuse it here rather than
+  //let it surface as a dark dataset.
+  unsigned char allowed[LIGHTS_ON_CONTROLLER]={0};
+  if (lightBuildAllowedList(cfg,allowed,LIGHTS_ON_CONTROLLER)==0)
+  {
+    fprintf(stderr,RED "--skip excluded all %d lights, leaving nothing to illuminate with.\n" NORMAL,LIGHTS_ON_CONTROLLER);
+    exit(1);
+  }
+
+  //--dlight and --tlight let the CONTROLLER decide which COB comes next, from inputs
+  //the host does not have. Naming a COB per frame would quietly replace that with a
+  //plain ascending sweep, so veto the excluded ones instead and leave the choice
+  //where the user put it. Round-robin needs no such care: an ascending sweep over the
+  //COBs still in play is exactly what it would have produced.
+  if ( (cfg->firmwareOwnedLightOrder) && (!cfg->skipByAdvancing) )
+  {
+    cfg->skipByAdvancing = 1;
+    fprintf(stderr,"The controller owns the light order here, so skipped lights will be stepped over rather than bypassed by name\n");
+  }
+}
+
 return 1;
 }
 

@@ -42,6 +42,14 @@ typedef struct
 
     int controllerVersionMajor;     /**< Parsed from the "V:major.minor" banner; 0 until seen. */
     int controllerVersionMinor;     /**< Parsed from the "V:major.minor" banner; 0 until seen. */
+
+    /** COB the controller last reported as lit (0-indexed), -1 when none is. Read out
+     *  of the Light1..Light6 columns, which every firmware generation emits — unlike
+     *  the strobe fields, this feedback is available on a Nano too. */
+    int currentLight;
+    /** COB the last corrective '+' was issued for, so --skipadvance pushes once per
+     *  step onto an excluded COB rather than once per reported line. -1 = idle. */
+    int lastSkipCorrection;
 } ArduinoSerialConfig;
 
 /** Does this controller understand the Rev 1.33 multi-character commands (e/E/S)?

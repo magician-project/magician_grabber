@@ -95,18 +95,28 @@ int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 static int camera_callback_next_light(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
 {
     (void) timestamp; (void) dataAsImage;
-    if (config!=NULL)
+    if (config==NULL)         { return 0; }
+    if (config->global==NULL) { return 0; }
+
+    ArduinoSerialConfig * arduino = (ArduinoSerialConfig *) config->global->arduino_cfg;
+    if (arduino==0) { return 0; }
+
+    //With --skip in force, name the COB we want instead of nudging the board's cursor
+    //with '+'. '+' lands on whatever the board decides comes next, and nothing tells
+    //us what that was in time to veto it before the shutter opens. Naming it costs the
+    //same single byte, cannot land on an excluded COB, and needs no model of where the
+    //board's cursor is. --skipadvance buys the other trade — the firmware keeps
+    //choosing the order and excluded COBs are stepped over reactively from the serial
+    //thread (see arduino_process_light_fields) — at the price of one wasted step.
+    if ( (config->global->lightSkipMask!=0) && (!config->global->skipByAdvancing) )
     {
-      if (config->global!=NULL)
-      {
-        ArduinoSerialConfig * arduino = (ArduinoSerialConfig *) config->global->arduino_cfg;
-        if (arduino!=0)
-         {
-          return arduino_signalNewFrame(arduino);
-         }
-      }
+      static int cursor = -1;
+      cursor = lightNextAllowed(config->global,cursor+1);
+      if (cursor<0) { return 0; } //parse_arguments rejects an empty set, so unreachable
+      return arduino_sendLightSelect(arduino,cursor);
     }
-    return 0;
+
+    return arduino_signalNewFrame(arduino);
 }
 
 //Global driver state, reachable from both the camera callback and the serial thread.
@@ -427,6 +437,28 @@ int main (int argc, char **argv)
         {
           arduino_enterExposureLockedMode(&arduino_config);
           cfg.manual_trigger_light = 0;
+
+          //On this path the controller walks a schedule it holds, so excluding a COB
+          //is simply leaving it out of the upload — no per-frame work and nothing that
+          //can drift. The polarization driver builds and uploads its own schedule (and
+          //is handed the same mask), so it is left to do that itself.
+          if ( (cfg.lightSkipMask!=0) && (!cfg.polarizationLights) )
+          {
+            unsigned char schedule[LIGHTS_ON_CONTROLLER]={0};
+            int scheduleLen = lightBuildAllowedList(&cfg,schedule,LIGHTS_ON_CONTROLLER);
+            if (scheduleLen>0)
+               { arduino_sendLightSchedule(&arduino_config,schedule,scheduleLen); }
+          }
+        }
+
+        if (cfg.lightSkipMask!=0)
+        {
+          char inUse[64]={0};
+          lightDescribeAllowed(&cfg,inUse,sizeof(inUse));
+          fprintf(stderr,GREEN "Lights in use: %s" NORMAL " (%s)\n",inUse,
+                  cfg.exposure_locked_light ? "left out of the controller's schedule" :
+                  cfg.skipByAdvancing       ? "stepped over when the controller reports one" :
+                                              "selected by name once per frame");
         }
     }
     else
@@ -435,13 +467,18 @@ int main (int argc, char **argv)
         cfg.exposure_locked_light = 0;
         cfg.polarizationLights    = 0;
         cfg.manual_trigger_light  = 0;
+
+        if (cfg.lightSkipMask!=0)
+        { fprintf(stderr,YELLOW "--skip needs the lighting controller (--arduino); ignoring it\n" NORMAL); }
+        cfg.lightSkipMask = 0;
     }
 
     if (cfg.polarizationLights)
     {
         polarizationDriverStart(&polarizationDriver, (void*) &arduino_config,
                                 cfg.polarizationStride, cfg.polarizationDwell,
-                                !arduino_controllerSupportsExposureLock(&arduino_config));
+                                !arduino_controllerSupportsExposureLock(&arduino_config),
+                                cfg.lightSkipMask);
         //Ground truth for frame->COB attribution comes from the controller, not from
         //a host-side model of the schedule, so dropped frames cannot desynchronise it.
         arduino_config.strobeCallback = (void*) controller_strobe_callback;

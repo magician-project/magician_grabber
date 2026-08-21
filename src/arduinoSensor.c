@@ -533,6 +533,57 @@ static void arduino_process_strobe_fields(ArduinoSerialConfig *config, const cha
     }
 }
 
+/* Track which COB the controller says is lit, and — under --skipadvance — push the
+ * board past one that --skip excluded.
+ *
+ * The Light1..Light6 columns sit at fields 6..11 and are emitted by every firmware
+ * generation, so this is the only light feedback that works on a Nano, a 1.32 Pico
+ * and a 1.33+ Pico alike. Reacting to what the controller REPORTS, rather than to a
+ * host-side model of where its cursor ought to be, is what makes this safe on the
+ * pattern modes: the firmware keeps choosing the order and the host only vetoes
+ * entries. A dropped '+' cannot desynchronise anything, because there is no shared
+ * cursor being counted — the next report re-states the truth.
+ *
+ * The extra '+' goes out once per transition ONTO an excluded COB, so a controller
+ * reporting at hundreds of Hz still produces exactly one nudge per unwanted step. If
+ * the COB it lands on is also excluded, the next report pushes again; parse_arguments
+ * guarantees at least one COB is in play, so this always terminates. */
+static void arduino_process_light_fields(ArduinoSerialConfig *config, const char *line)
+{
+    const char *p = arduino_field(line, 6);
+    if (p==0) { return; }
+
+    int lit = -1;
+    for (int i=0; i<LIGHTS_ON_CONTROLLER; i++)
+    {
+        if (atoi(p)!=0) { lit = i; break; }
+        //Nothing has to follow the last light column: on a pre-1.33 controller with
+        //every COB off, Light6 is the end of the row. Looking for a comma there would
+        //throw away a perfectly good "no light is on" report.
+        if (i+1 >= LIGHTS_ON_CONTROLLER) { break; }
+        p = strchr(p,',');
+        if (p==0) { return; } //row is shorter than the light block, so it is not one
+        p++;
+    }
+
+    config->currentLight = lit;
+
+    if (config->global==0)                { return; }
+    if (config->global->lightSkipMask==0) { return; }
+    if (!config->global->skipByAdvancing) { return; }
+
+    if ( (lit<0) || (!lightIsSkipped(config->global,lit)) )
+    {
+      config->lastSkipCorrection = -1; //back on a COB we want; re-arm
+      return;
+    }
+
+    if (config->lastSkipCorrection == lit) { return; } //already pushed past this one
+    config->lastSkipCorrection = lit;
+
+    arduino_signalNewFrame(config); //a bare '+': let the board pick its own next entry
+}
+
 /* Emit the controller.csv header, sized to the row format this controller actually
  * produces.
  *
@@ -580,6 +631,9 @@ int process_generic_string_data(ArduinoSerialConfig *config, char enabledFileOut
 
     //Rev 1.33+ controllers append the strobe ground truth; feed it to any listener.
     arduino_process_strobe_fields(config,lineBuffer);
+
+    //Every generation reports which COB is lit; that drives the --skipadvance veto.
+    arduino_process_light_fields(config,lineBuffer);
 
     if (config->callback)
                    {
@@ -654,6 +708,11 @@ void *arduino_thread(void *arg)
 {
     ArduinoSerialConfig *config = (ArduinoSerialConfig *)arg;
     GlobalConfig *cfg = config->global;
+
+    //"no light reported yet" and "no correction outstanding" are both -1, and the
+    //positional struct initialisers in main() cannot say that.
+    config->currentLight       = -1;
+    config->lastSkipCorrection = -1;
 
     if (cfg->simulate)
     {

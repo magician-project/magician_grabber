@@ -119,18 +119,25 @@ int process_keyboard_input(ArduinoSerialConfig * arduino_config,int key)
 static int camera_callback_next_light(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
 {
     (void)timestamp; (void)dataAsImage;
-    if (config!=NULL)
+    if (config==NULL)         { return 0; }
+    if (config->global==NULL) { return 0; }
+
+    ArduinoSerialConfig * arduino = (ArduinoSerialConfig *) config->global->arduino_cfg;
+    if (arduino==0) { return 0; }
+
+    //Mirrors multiModalGrabber.c: with --skip in force, name the COB we want rather
+    //than nudging the board's cursor with '+', which lands on whatever comes next
+    //with no chance to veto it. --skipadvance keeps '+' and vetoes reactively from
+    //the serial thread instead.
+    if ( (config->global->lightSkipMask!=0) && (!config->global->skipByAdvancing) )
     {
-      if (config->global!=NULL)
-      {
-        ArduinoSerialConfig * arduino = (ArduinoSerialConfig *) config->global->arduino_cfg;
-        if (arduino!=0)
-         {
-          return arduino_signalNewFrame(arduino);
-         }
-      }
+      static int cursor = -1;
+      cursor = lightNextAllowed(config->global,cursor+1);
+      if (cursor<0) { return 0; }
+      return arduino_sendLightSelect(arduino,cursor);
     }
-    return 0;
+
+    return arduino_signalNewFrame(arduino);
 }
 
 
