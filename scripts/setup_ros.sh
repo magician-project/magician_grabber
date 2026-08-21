@@ -36,8 +36,7 @@ python3 -m pip install -U \
    pytest-rerunfailures
 
 # Install ROS 2 Humble
-sudo apt update && sudo apt install -y \
-    ros-rolling-ros-base 
+sudo apt update && sudo apt install -y ros-rolling-ros-base 
 
 
 source /opt/ros/rolling/setup.bash 
