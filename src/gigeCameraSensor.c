@@ -721,7 +721,7 @@ while (*config->keep_running && !termination_requested)
     // If your downstream expects exact width*height, keep that, but ensure it matches `size`.
     dataAsImage.image_size = (unsigned int)size;
 
-    { struct timespec _ts; clock_gettime(CLOCK_REALTIME, &_ts); dataAsImage.timestamp = (unsigned long)_ts.tv_sec * 1000000000UL + (unsigned long)_ts.tv_nsec; }
+    dataAsImage.timestamp = GetUnixTimeNanoseconds();
 
     // Stats + computed fps
     unsigned long endTime = GetTickCountMicroseconds();
@@ -807,7 +807,7 @@ while (*config->keep_running && !termination_requested)
                             dataAsImage.channels     = 1;
                             dataAsImage.bitsperpixel = 8;
                             dataAsImage.image_size   = dataAsImage.width  * dataAsImage.height * dataAsImage.channels;
-                            dataAsImage.timestamp    = (unsigned int) GetTickCountMicroseconds() / 1000;
+                            dataAsImage.timestamp    = GetUnixTimeNanoseconds();
 
                             // Display some informations about the retrieved buffer
                             //printf ("Acquired %d×%d buffer\n",dataAsImage.width,dataAsImage.height);

@@ -133,6 +133,18 @@ typedef struct
 
 #define EPOCH_YEAR_IN_TM_YEAR 1900
 
+/**
+ * @brief Wall-clock time as nanoseconds since the Unix epoch: the unit of the timestamps
+ * published to shared memory (SharedMemoryVideoBuffers), which consumers such as
+ * magician_vision_classifier read as timestamp_ns.
+ */
+static unsigned long GetUnixTimeNanoseconds()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (unsigned long) ts.tv_sec * 1000000000UL + (unsigned long) ts.tv_nsec;
+}
+
 static unsigned long tickBaseTPMN = 0;
 /**
  * @brief Return number of clock ticks for our system in microseconds
