@@ -1,5 +1,7 @@
 import os
 import ctypes
+import contextlib
+import threading
 import numpy as np
 #-------------------------------------------------------------------------------
 # Debug/status printing is off by default since copy_numpy_to_shared_memory and
@@ -49,8 +51,18 @@ def loadLibrary(filename, relativePath="", forceUpdate=False):
 
 class SharedMemoryManager:
 
+    # Streams published by live server-mode managers in this process, counted per
+    # (descriptor, stream): a stream is destroyed only when its last manager goes,
+    # so a manager replacing another one (e.g. a publisher restarted in-process)
+    # doesn't get its stream destroyed by the old manager's destructor.
+    _published_streams = {}
+    _published_streams_lock = threading.Lock()
+
     def link(self):
         #Common C functions used in member python functions
+        self.libSharedMemoryVideoBuffers.createSharedMemoryContextDescriptor.argtypes = [ctypes.c_char_p]
+        self.libSharedMemoryVideoBuffers.createSharedMemoryContextDescriptor.restype  = ctypes.c_int
+
         self.libSharedMemoryVideoBuffers.connectToSharedMemoryContextDescriptor.argtypes = [ctypes.c_char_p]
         self.libSharedMemoryVideoBuffers.connectToSharedMemoryContextDescriptor.restype  = ctypes.c_void_p
 
@@ -71,6 +83,9 @@ class SharedMemoryManager:
 
         self.libSharedMemoryVideoBuffers.getLocalMappingPointer.argtypes = [ctypes.c_void_p,ctypes.c_int]
         self.libSharedMemoryVideoBuffers.getLocalMappingPointer.restype  = POINTER(ctypes.c_ubyte)
+
+        self.libSharedMemoryVideoBuffers.unmapLocalMappingItem.argtypes = [ctypes.c_void_p,ctypes.c_uint]
+        self.libSharedMemoryVideoBuffers.unmapLocalMappingItem.restype  = ctypes.c_int
 
         self.libSharedMemoryVideoBuffers.printSharedMemoryContextState.argtypes = [ctypes.c_void_p] 
 
@@ -109,23 +124,32 @@ class SharedMemoryManager:
         self.libSharedMemoryVideoBuffers.getVideoFrameChannels.restype  = ctypes.c_uint
 
         self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp.argtypes = [ctypes.c_void_p]
-        self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp.restype  = ctypes.c_ulong
+        self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp.restype  = ctypes.c_uint64
 
-        self.libSharedMemoryVideoBuffers.setVideoFrameTimestamp.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
-        self.libSharedMemoryVideoBuffers.setVideoFrameTimestamp.restype  = None
+        self.libSharedMemoryVideoBuffers.setLatestVideoFrameTimestamp.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+        self.libSharedMemoryVideoBuffers.setLatestVideoFrameTimestamp.restype  = ctypes.c_int
 
-        self.libSharedMemoryVideoBuffers.copy_to_shared_memory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong]
-        self.libSharedMemoryVideoBuffers.copy_to_shared_memory.restype  = None
+        self.libSharedMemoryVideoBuffers.copy_to_shared_memory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_uint64]
+        self.libSharedMemoryVideoBuffers.copy_to_shared_memory.restype  = ctypes.c_int
 
     def server(self, descriptor="video_frames.shm", frameName="stream1"):
         path = descriptor.encode('utf-8')
+        # Publishers create the context if nobody has yet (an existing one keeps its
+        # streams), so no separate server process has to be running first
+        if self.libSharedMemoryVideoBuffers.createSharedMemoryContextDescriptor(path) != 0:
+            raise RuntimeError(f"Failed to create shared memory descriptor '{descriptor}'")
         self.smc      = self.libSharedMemoryVideoBuffers.connectToSharedMemoryContextDescriptor(path)
+        if not self.smc:
+            raise RuntimeError(f"Failed to connect to shared memory descriptor '{descriptor}'")
 
         if _VERBOSE: print("Creating descriptor ",frameName)
         path = frameName.encode('utf-8')
         res = self.libSharedMemoryVideoBuffers.createVideoFrameMetaData(self.smc,path,self.width,self.height,self.channels)
         if res != 0:
             raise RuntimeError(f"createVideoFrameMetaData failed for stream '{frameName}'")
+        self._published_key = (descriptor, frameName)
+        with SharedMemoryManager._published_streams_lock:
+            SharedMemoryManager._published_streams[self._published_key] = SharedMemoryManager._published_streams.get(self._published_key, 0) + 1
 
         #Get Video Buffer Pointer
         if _VERBOSE: print("Getting frame ",frameName)
@@ -133,22 +157,25 @@ class SharedMemoryManager:
 
         #Map Video Buffer Pointer
         if _VERBOSE: print("Mapping video buffer memory ")
-        res = self.libSharedMemoryVideoBuffers.map_frame_shared_memory(self.frame,1) #The 1 is very important, it copies the mmapped region to our context
+        res = self.libSharedMemoryVideoBuffers.map_frame_shared_memory(self.frame,1) # maps the stream into this process now, so a failure surfaces here
         if not res:
             raise RuntimeError(f"map_frame_shared_memory failed for stream '{frameName}'")
 
     def client(self, descriptor="video_frames.shm", frameName="stream1"):   
         path = descriptor.encode('utf-8')  
         self.smc      = self.libSharedMemoryVideoBuffers.connectToSharedMemoryContextDescriptor(path)
+        # NULL pointers come back from ctypes (c_void_p) as None, never 0
+        if not self.smc:
+            raise RuntimeError(f"Failed to connect to shared memory descriptor '{descriptor}'")
         #Get Video Buffer Pointer
         if _VERBOSE: print("Getting frame ",frameName)
         path = frameName.encode('utf-8')
         self.frame    = self.libSharedMemoryVideoBuffers.getVideoBufferPointer(self.smc,path)
-        if (self.frame==0):
-            raise RuntimeError("Failed to find video buffer pointer")
+        if not self.frame:
+            raise RuntimeError(f"Failed to find stream '{frameName}' in '{descriptor}'")
 
         self.localMap = self.libSharedMemoryVideoBuffers.allocateLocalMapping()
-        if (self.localMap==0):
+        if not self.localMap:
             raise RuntimeError("Failed to allocate local mapping")
 
         self.item     = self.libSharedMemoryVideoBuffers.resolveFeedNameToID(self.smc,path)
@@ -175,7 +202,9 @@ class SharedMemoryManager:
         self.height     = height
         self.channels   = channels
         self.frame_size = width * height * channels
+        self.unix_timestamp = 0 # set by every successful read
         self.connect    = connect
+        self._thread_state = threading.local() # per-thread "inside a read_frame() block" flag
 
         if (connect):
           self.client(descriptor=descriptor, frameName=frameName)
@@ -196,20 +225,45 @@ class SharedMemoryManager:
             if getattr(self, 'localMap', None):
                 self.libSharedMemoryVideoBuffers.freeLocalMapping(self.localMap)
         else:
-            smc       = getattr(self, 'smc', None)
-            frameName = getattr(self, 'frameName', None)
-            if smc and frameName:
-                path = frameName.encode('utf-8')
-                self.libSharedMemoryVideoBuffers.destroyVideoFrame(smc, path)
+            smc = getattr(self, 'smc', None)
+            key = getattr(self, '_published_key', None)
+            if smc and key:
+                with SharedMemoryManager._published_streams_lock:
+                    remaining = SharedMemoryManager._published_streams.get(key, 1) - 1
+                    if remaining > 0:
+                        SharedMemoryManager._published_streams[key] = remaining
+                    else:
+                        SharedMemoryManager._published_streams.pop(key, None)
+                if remaining <= 0:
+                    self.libSharedMemoryVideoBuffers.destroyVideoFrame(smc, key[1].encode('utf-8'))
 
     def copy_numpy_to_shared_memory(self, array, unix_timestamp=0):
+        """Publishes one frame. Returns True once readers can see it, or False if it
+        was dropped because the writer couldn't get a free slot in time (readers are
+        holding all of them) - a transient condition, the next frame may succeed.
+        Raises TypeError/ValueError for an array that isn't one uint8 frame of the
+        stream's size."""
         #print("copy_numpy_to_shared_memory ")
+        # The C side copies raw bytes, so reject anything that isn't exactly one
+        # frame of uint8 data before touching the buffer.
+        if array.dtype != np.uint8:
+            raise TypeError(f"copy_numpy_to_shared_memory expects a uint8 array, got {array.dtype}")
+        expected_size = self.libSharedMemoryVideoBuffers.getVideoFrameDataSize(self.frame)
+        if array.nbytes != expected_size:
+            raise ValueError(f"copy_numpy_to_shared_memory: array of shape {array.shape} is {array.nbytes} bytes, stream '{self.frameName}' expects {expected_size}")
+        # array.ctypes.data is where the first element lives, which for a strided
+        # view (transpose, [::-1], ...) is not the array's logical byte order.
+        array = np.ascontiguousarray(array)
+
         #Lock Video Buffer
         res = self.libSharedMemoryVideoBuffers.startWritingToVideoBufferPointer(self.frame)
 
-        # Check if the array size matches the shared memory size
         if res == 0:
-            raise RuntimeError("Failed to lock video buffer for writing")
+            if not getattr(self, '_warned_dropped_frame', False):
+                print(f"copy_numpy_to_shared_memory: dropped a frame for stream '{self.frameName}', "
+                      "no free slot in time (reported once)")
+                self._warned_dropped_frame = True
+            return False
 
         # Copy the array data to shared memory
         array_ptr = array.ctypes.data_as(ctypes.c_void_p)
@@ -222,68 +276,135 @@ class SharedMemoryManager:
           if (len(array.shape)>2):
                 channels = array.shape[2]
           if _VERBOSE: print(f"copy_to_shared_memory {size} bytes ({width} x {height} x {channels})")
-          self.libSharedMemoryVideoBuffers.copy_to_shared_memory(self.frame, array_ptr, size, ctypes.c_ulong(unix_timestamp))
-        except Exception as e:
-          print("An exception occurred in copy_to_shared_memory:", str(e))
+          copied = self.libSharedMemoryVideoBuffers.copy_to_shared_memory(self.frame, array_ptr, size, ctypes.c_uint64(unix_timestamp))
         finally:
           # Every C writer (client.c, publisher.c, publisher_data.c) pairs
           # startWritingToVideoBufferPointer with stopWritingToVideoBufferPointer;
           # without releasing it here the buffer stays locked forever and every
           # write after the first times out in startWritingToVideoBufferPointer.
           self.libSharedMemoryVideoBuffers.stopWritingToVideoBufferPointer(self.frame)
+        if not copied:
+            raise RuntimeError(f"copy_to_shared_memory rejected the frame for stream '{self.frameName}'")
+        return True
+
+    def _check_not_in_read_frame(self):
+        # A second read of the same stream on one thread supersedes the first in
+        # the C library, which would silently unprotect an open read_frame() view.
+        if getattr(self._thread_state, "in_read_frame", False):
+            raise RuntimeError("Can't read this stream again inside a read_frame() block on the same thread "
+                               "(it would release the block's protection) - use the view and smm.unix_timestamp instead")
+
+    def _follow_stream(self):
+        # A stream keeps its slot while it exists, but one that was destroyed and
+        # re-created (e.g. its publisher restarted) can land in another slot. Look
+        # it up again so reads follow it; the C library remaps re-created streams
+        # on its own. Returns the stream's VideoFrame pointer, or None while it
+        # doesn't exist.
+        frame = self.libSharedMemoryVideoBuffers.getVideoBufferPointer(self.smc, self.frameName.encode('utf-8'))
+        if frame and (frame != self.frame):
+            if self.connect:
+                item = self.libSharedMemoryVideoBuffers.resolveFeedNameToID(self.smc, self.frameName.encode('utf-8'))
+                if not self.libSharedMemoryVideoBuffers.mapRemoteToLocal(self.smc, self.localMap, item):
+                    return None
+                self.libSharedMemoryVideoBuffers.unmapLocalMappingItem(self.localMap, self.item)
+                self.item = item
+            self.frame = frame
+        return frame
 
     def get_timestamp(self):
-        res = self.libSharedMemoryVideoBuffers.startReadingFromVideoBufferPointer(self.frame)
-        if not res:
+        self._check_not_in_read_frame()
+        frame = self._follow_stream()
+        if not frame or not self.libSharedMemoryVideoBuffers.startReadingFromVideoBufferPointer(frame):
             return None
-        ts = self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp(self.frame)
-        self.libSharedMemoryVideoBuffers.stopReadingFromVideoBufferPointer(self.frame)
-        return ts
+        try:
+            return self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp(frame)
+        finally:
+            self.libSharedMemoryVideoBuffers.stopReadingFromVideoBufferPointer(frame)
 
     def set_timestamp(self, unix_timestamp=0):
-        self.libSharedMemoryVideoBuffers.setVideoFrameTimestamp(self.frame, ctypes.c_ulong(unix_timestamp))
-
-        #print("stopWritingToVideoBufferPointer ")
-        # Copy the array data to shared memory
-        res = self.libSharedMemoryVideoBuffers.stopWritingToVideoBufferPointer(self.frame)
+        # Re-stamps the frame currently published as latest (0 = now). This takes
+        # the writer lock itself, so it waits for (and can time out on) a write
+        # that is in progress.
+        res = self.libSharedMemoryVideoBuffers.setLatestVideoFrameTimestamp(self.frame, ctypes.c_uint64(unix_timestamp))
         if res == 0:
-            raise RuntimeError("Failed to unlock video buffer after writing")
+            raise RuntimeError("Failed to lock video buffer to set its timestamp")
 
-    def read_from_shared_memory(self):
-        #print("read_from_shared_memory ")
+    @contextlib.contextmanager
+    def read_frame(self):
+        """Zero-copy read of the latest frame:
 
-        #self.libSharedMemoryVideoBuffers.printSharedMemoryContextState(self.smc)
+            with smm.read_frame() as view:
+                if view is not None:
+                    process(view)
+
+        `view` is a read-only numpy array pointing straight into shared memory,
+        or None if the frame couldn't be read. The writer won't reuse its slot
+        until the block exits, so the view is a complete, unchanging frame for
+        the whole block - but not after it: copy anything you need to keep.
+        smm.width/height/channels/unix_timestamp describe the frame.
+
+        - Streams have 4 slots by default: the latest frame, the one being written,
+          and room for two readers holding older frames. If readers hold all of them
+          the writer stalls and copy_numpy_to_shared_memory drops the frame (returns
+          False), so don't keep blocks open across many frames. SHMVB_BUFFER_COUNT,
+          set by the process that creates the stream, can lower the count.
+        - Exit the block on the thread that entered it, and don't read this
+          manager again inside it (read_frame(), read_from_shared_memory() and
+          get_timestamp() raise RuntimeError there).
+        - Streams created with SHMVB_BUFFER_COUNT=1 have no protection at all.
+        - If the publisher re-creates the stream (e.g. restarts, even at another
+          resolution), reads follow the new stream.
+        """
+        self._check_not_in_read_frame()
+
+        # Use this frame/item for the whole block, even if another thread follows
+        # the stream elsewhere meanwhile: stop must match this start.
+        frame = self._follow_stream()
+        item  = self.item
 
         # Lock Video Buffer for reading
-        res = self.libSharedMemoryVideoBuffers.startReadingFromVideoBufferPointer(self.frame)
-        if res:
-          self.frame_size     = self.libSharedMemoryVideoBuffers.getVideoFrameDataSize(self.frame)
-          self.width          = self.libSharedMemoryVideoBuffers.getVideoFrameWidth(self.frame)
-          self.height         = self.libSharedMemoryVideoBuffers.getVideoFrameHeight(self.frame)
-          self.channels       = self.libSharedMemoryVideoBuffers.getVideoFrameChannels(self.frame)
-          self.unix_timestamp = self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp(self.frame)
-  
-          if (self.connect):
-             pixels = self.libSharedMemoryVideoBuffers.getLocalMappingPointer(self.localMap, self.item)
-          else:
-             pixels = self.libSharedMemoryVideoBuffers.getVideoFrameDataPointer(self.frame)
+        if not frame or not self.libSharedMemoryVideoBuffers.startReadingFromVideoBufferPointer(frame):
+            yield None
+            return
 
-          # getLocalMappingPointer/getVideoFrameDataPointer are declared as
-          # POINTER(c_ubyte), matching the actual (unsigned) pixel data, so this
-          # is already a uint8 view - no dtype cast (which forced a hidden copy
-          # via .astype) is needed. This is a zero-copy view straight into shared
-          # memory: it stays valid only until the next writer touches this
-          # buffer, so callers that need to keep the data across frames must
-          # copy it themselves.
-          array = np.ctypeslib.as_array(pixels, shape=(self.height, self.width, self.channels))
+        self._thread_state.in_read_frame = True
+        try:
+            self.frame_size     = self.libSharedMemoryVideoBuffers.getVideoFrameDataSize(frame)
+            self.width          = self.libSharedMemoryVideoBuffers.getVideoFrameWidth(frame)
+            self.height         = self.libSharedMemoryVideoBuffers.getVideoFrameHeight(frame)
+            self.channels       = self.libSharedMemoryVideoBuffers.getVideoFrameChannels(frame)
+            self.unix_timestamp = self.libSharedMemoryVideoBuffers.getVideoFrameTimestamp(frame)
 
-          if _VERBOSE: print("Reading %ux%u:%u (size %lu) frame at "% (self.width, self.height, self.channels, self.frame_size), pixels)
+            if (self.connect):
+               pixels = self.libSharedMemoryVideoBuffers.getLocalMappingPointer(self.localMap, item)
+            else:
+               pixels = self.libSharedMemoryVideoBuffers.getVideoFrameDataPointer(frame)
 
-          # Unlock Video Buffer after reading
-          self.libSharedMemoryVideoBuffers.stopReadingFromVideoBufferPointer(self.frame)
+            if not pixels:
+               yield None
+            else:
+               # getLocalMappingPointer/getVideoFrameDataPointer are declared as
+               # POINTER(c_ubyte), matching the actual (unsigned) pixel data, so
+               # this is already uint8. Read-only: writing through it would change
+               # the published frame under every other reader.
+               view = np.ctypeslib.as_array(pixels, shape=(self.height, self.width, self.channels))
+               view.flags.writeable = False
 
-          return array
-        return None
+               if _VERBOSE: print("Reading %ux%u:%u (size %lu) frame at "% (self.width, self.height, self.channels, self.frame_size), pixels)
+
+               yield view
+        finally:
+            self._thread_state.in_read_frame = False
+            # Unlock Video Buffer after reading - also on exceptions (e.g. Ctrl-C),
+            # since a live process that never stops reading pins its slot
+            self.libSharedMemoryVideoBuffers.stopReadingFromVideoBufferPointer(frame)
+
+    def read_from_shared_memory(self):
+        # Copy while read_frame() still protects the slot: once the read is
+        # stopped the writer may reuse the slot for a later frame, which would
+        # change a zero-copy view under the caller.
+        with self.read_frame() as view:
+            return None if view is None else view.copy()
 
 # Test
 if __name__ == "__main__":
