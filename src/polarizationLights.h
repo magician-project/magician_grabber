@@ -158,8 +158,12 @@ int polarizationAnalyseFrame(const struct Image *image, int stride, PolFrameStat
  *                      of the same name in PolLightDriver.
  *  @param skipMask     Bit i set = COB i is excluded (--skip); 0 uses them all. At
  *                      least one COB must remain, which parse_arguments enforces.
+ *  @param frameRate    Capture rate in Hz, or 0 when unknown/free-running. The
+ *                      attribution window is derived from it because the camera
+ *                      pipeline delay is a fixed DURATION, so how many frames it
+ *                      spans depends on the rate. See unanimityWindow.
  *  @return 1 on success. */
-int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping, unsigned char skipMask);
+int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping, unsigned char skipMask, double frameRate);
 
 /** Record the COB that the controller reports as having actually fired.
  *  Call from the controller's serial callback, once per reported strobe.

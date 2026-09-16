@@ -478,7 +478,7 @@ int main (int argc, char **argv)
         polarizationDriverStart(&polarizationDriver, (void*) &arduino_config,
                                 cfg.polarizationStride, cfg.polarizationDwell,
                                 !arduino_controllerSupportsExposureLock(&arduino_config),
-                                cfg.lightSkipMask);
+                                cfg.lightSkipMask, cfg.frameRate);
         //Ground truth for frame->COB attribution comes from the controller, not from
         //a host-side model of the schedule, so dropped frames cannot desynchronise it.
         arduino_config.strobeCallback = (void*) controller_strobe_callback;

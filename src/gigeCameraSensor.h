@@ -38,6 +38,12 @@ typedef struct
 
     void * camera_shm_stream;       /**< Shared-memory stream context; non-NULL when --stream is active. */
     void * callback;                /**< Optional user callback invoked on every captured frame; cast to camera_callback_t. */
+
+    /* Keep new members BELOW this line: multiModalGrabber.c and ros_magician_grabber.cpp both
+     * brace-initialise this struct POSITIONALLY, so inserting a field higher up silently
+     * shifts every later initialiser (keep_running included) instead of failing to compile. */
+    char hardwareFrameRateActive;   /**< 1 once the camera accepted arv_camera_set_frame_rate(), so the
+                                         capture loop must not pace a second time in software. */
 } GiGECameraConfig;
 
 
