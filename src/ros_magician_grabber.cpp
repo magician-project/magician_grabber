@@ -490,9 +490,10 @@ int main(int argc, char **argv)
 
 
     //Copy teensy/arduino port
-    //snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
-    //snprintf(arduino_config.port_name,128,"%s",cfg.arduinoPath);
+    snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
+    snprintf(arduino_config.port_name,128,"%s",cfg.arduinoPath);
     fprintf(stderr,"Arduino : %s \n",arduino_config.port_name);
+    if (cfg.useTeensy) { fprintf(stderr,"Teensy : %s \n",teensy_config.port_name); }
 
     //Copy ATI IP/port from cfg
     snprintf(atinetft_config.ip_address,128,"%s",cfg.atiIP);
