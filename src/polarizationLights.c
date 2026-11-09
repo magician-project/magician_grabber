@@ -16,6 +16,15 @@
 #define POL_DEFAULT_DWELL  3
 #define POL_DEFAULT_TARGET_S0 110.0
 
+/* Wall-clock lag between a COB lighting the scene and this host finishing the frame it lit:
+ * sensor readout + GigE transfer of a ~5 MB frame (~40 ms on 1 GbE) + one buffer hop. It is
+ * a duration, not a frame count, which is why polarizationDriverStart() needs the frame rate
+ * to turn it into an attribution window. 60 ms reproduces the previous behaviour exactly at
+ * the old --fps 8 default (window 2) while widening it as the rate rises. Measure it on a
+ * new rig (strobe one COB, see how many frames later the brightness step lands) before
+ * trusting attribution on hardware with a different link or exposure. */
+#define POL_PIPELINE_DELAY_US 60000.0
+
 /* Weight of a fresh cycle's measurement against the running score. Scenes change
  * slowly relative to a cycle (~0.8 s at 22 fps), so we smooth rather than jump. */
 #define POL_SCORE_EMA 0.35
@@ -303,7 +312,7 @@ static void polScoreCycle(PolLightDriver *drv)
 //  Public entry points
 // =============================================================================
 
-int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping, unsigned char skipMask)
+int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, int dwell, int legacyStepping, unsigned char skipMask, double frameRate)
 {
     if (drv == 0) { return 0; }
     memset(drv, 0, sizeof(PolLightDriver));
@@ -318,12 +327,43 @@ int polarizationDriverStart(PolLightDriver *drv, void *arduino_cfg, int stride, 
     drv->legacyStepping = legacyStepping;
     drv->legacyCursor   = 0;
 
-    /* A frame is attributed only if this many consecutive recent strobe reports
-     * name the same COB. It must exceed the GigE pipeline offset (1-2 frames) yet
-     * stay below the dwell, or no frame in a dwell would ever qualify. */
-    drv->unanimityWindow = drv->dwell - 1;
+    /* A frame is attributed only if this many consecutive recent strobe reports name the
+     * same COB, which makes the report safe as long as the window spans the pipeline delay:
+     * requiring the last W reports to agree proves the COB was unchanged over the last W-1
+     * frames, so a frame exposed P frames ago is correctly attributed while P <= W-1.
+     *
+     * The delay is a fixed DURATION (readout + GigE transfer + a buffer hop), so the number
+     * of FRAMES it spans scales with the rate. The old `dwell - 1` ignored that: it was
+     * tuned when the shipped default was --fps 8 (125 ms/frame, so W=2 covered one frame,
+     * i.e. up to 125 ms) and stayed at 2 when --fps went to 23 (43.5 ms/frame), where 2 only
+     * covers 43.5 ms. Past that, polAttributeFrame() does not return -1, it returns a
+     * CONFIDENTLY WRONG COB -- the frame is folded into the wrong light's score. The pixels
+     * are untouched, but every "frame N was lit by COB k" record derived from this is wrong. */
+    if (frameRate > 0.0)
+    {
+        double framePeriodUs = 1000000.0 / frameRate;
+        drv->unanimityWindow = (int)ceil(POL_PIPELINE_DELAY_US / framePeriodUs) + 1;
+    } else
+    {
+        drv->unanimityWindow = drv->dwell - 1;   /* free-run: no period to derive from */
+    }
     if (drv->unanimityWindow < 2)                 { drv->unanimityWindow = 2; }
     if (drv->unanimityWindow > POL_STROBE_RING)   { drv->unanimityWindow = POL_STROBE_RING; }
+
+    /* The window cannot exceed the dwell: a run of identical reports is at most `dwell` long,
+     * so W > dwell attributes NOTHING and W == dwell attributes only the last frame of each
+     * dwell. Both are configuration errors at this rate, and silence would look like a dead
+     * light rather than a too-short dwell, so say so. */
+    if (drv->unanimityWindow >= drv->dwell)
+    {
+        fprintf(stderr, YELLOW
+                "Polarization: %0.1f Hz needs a unanimity window of %d frames to cover the "
+                "~%d ms pipeline delay, but --poldwell is only %d.\n"
+                "              Frames will be attributed rarely (or never). Raise --poldwell "
+                "to at least %d, or lower --fps.\n" NORMAL,
+                frameRate, drv->unanimityWindow, (int)(POL_PIPELINE_DELAY_US / 1000),
+                drv->dwell, drv->unanimityWindow + 1);
+    }
 
     for (int i = 0; i < POL_STROBE_RING; i++) { drv->strobeRing[i] = 0xFF; }
 

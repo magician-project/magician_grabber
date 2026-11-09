@@ -451,9 +451,23 @@ int gigecamera_startStream(GiGECameraConfig * context)
             {
                 arv_camera_set_black_level(camera, settings.blackLevel, NULL);
             }
+            context->hardwareFrameRateActive = 0;
             if (settings.frameRate!=0.0)
             {
-                arv_camera_set_frame_rate (camera, settings.frameRate, NULL);
+                /* Keep the GError: whether the camera actually took the rate decides if the
+                 * capture loop may skip its own software pacing. Discarding it (the old NULL)
+                 * left no way to tell "camera is pacing us" from "nothing is pacing us". */
+                GError *frameRateError = NULL;
+                arv_camera_set_frame_rate (camera, settings.frameRate, &frameRateError);
+                if (frameRateError != NULL)
+                {
+                    fprintf(stderr,"Camera refused frame rate %0.2f Hz (%s) — falling back to software pacing\n",
+                            settings.frameRate, frameRateError->message);
+                    g_clear_error(&frameRateError);
+                } else
+                {
+                    context->hardwareFrameRateActive = 1;
+                }
             }
 
             if (error == NULL)
@@ -613,6 +627,14 @@ void *gigecamera_thread(void *arg)
     char filename[2048]= {0};
     unsigned int frameNumber = 0;
     unsigned int brokenFrameNumber = 0;
+    unsigned int popTimeoutNumber  = 0;   // "no frame ready yet" -- NOT a broken frame, see the pop below
+
+    /* Wait at least 1.5 frame periods for a buffer. A timeout shorter than the frame period
+     * (the old hardcoded 20 ms, vs 43.5 ms at 23 Hz) guarantees a timeout every time the loop
+     * gets ahead of the sensor, which is the normal steady state. Falls back to 200 ms when
+     * no rate is set (free-run), where there is no period to derive from. */
+    unsigned long popTimeoutMicroseconds = (config->frameRate > 0.0) ?
+                                           (unsigned long)(1500000.0 / config->frameRate) : 200000;
 
     struct Image dataAsImage= {0};
     dataAsImage.width  = config->width;
@@ -640,13 +662,16 @@ while (*config->keep_running && !termination_requested)
     startGrab = GetTickCountMicroseconds();
 
     // Prefer timeout_pop to avoid busy waiting.
-    // Timeout is in microseconds in Aravis; pick something near frame period.
-    buffer = arv_stream_timeout_pop_buffer(stream, 20000); // 20ms
+    // Timeout is in microseconds in Aravis; see popTimeoutMicroseconds above.
+    buffer = arv_stream_timeout_pop_buffer(stream, popTimeoutMicroseconds);
 
     if (!ARV_IS_BUFFER(buffer))
     {
-        brokenFrameNumber++;
-        //lastFrameIsBroken=1;
+        // Timing out is NOT a broken frame -- it just means the sensor has not finished the
+        // next one yet. Counting it as one (the old brokenFrameNumber++) inflated the very
+        // counter that gates the UDP-packet-loss hint below, so that diagnostic fired on an
+        // arbitrary cadence during a perfectly healthy stream.
+        popTimeoutNumber++;
         // No buffer ready yet (or stream starving). Sleep a bit to reduce CPU.
         usleep(1000);
         continue;
@@ -668,14 +693,15 @@ while (*config->keep_running && !termination_requested)
                                       &config->n_failures,
                                       &config->n_underruns);
             fprintf(stderr,
-                "[Aravis] Non-success buffer (status=%d). completed=%" G_GUINT64_FORMAT
+                "[Aravis] Non-success buffer (status=%d). broken=%u popTimeouts=%u "
+                "completed=%" G_GUINT64_FORMAT
                 " failures=%" G_GUINT64_FORMAT " underruns=%" G_GUINT64_FORMAT "\n"
                 "  Hint: This often indicates UDP packet loss or receiver overload.\n"
                 "        - Increase OS UDP/socket buffers (rmem_max / netdev_max_backlog)\n"
                 "        - Increase ArvGvStream socket-buffer-size\n"
                 "        - Enable/tune packet resend + packet-timeout/frame-retention\n"
                 "        - Reduce bandwidth: ROI/FPS or add camera inter-packet delay\n",
-                (int)st,
+                (int)st, brokenFrameNumber, popTimeoutNumber,
                 config->n_completed_buffers, config->n_failures, config->n_underruns);
         }
 
@@ -721,7 +747,7 @@ while (*config->keep_running && !termination_requested)
     // If your downstream expects exact width*height, keep that, but ensure it matches `size`.
     dataAsImage.image_size = (unsigned int)size;
 
-    { struct timespec _ts; clock_gettime(CLOCK_REALTIME, &_ts); dataAsImage.timestamp = (unsigned long)_ts.tv_sec * 1000000000UL + (unsigned long)_ts.tv_nsec; }
+    dataAsImage.timestamp = GetUnixTimeNanoseconds();
 
     // Stats + computed fps
     unsigned long endTime = GetTickCountMicroseconds();
@@ -756,8 +782,17 @@ while (*config->keep_running && !termination_requested)
 
     endGrab = GetTickCountMicroseconds();
 
-    // 4) Optional pacing (if you truly need to limit CPU/bandwidth).
-    if (config->frameRate > 0.0)
+    // 4) Software pacing -- ONLY as a fallback when the camera is not pacing itself.
+    //
+    // When arv_camera_set_frame_rate() succeeded the sensor already emits at exactly
+    // config->frameRate, so sleeping here paced the stream a second time. That was not
+    // merely redundant, it cost latency: this sleep runs AFTER the buffer is consumed and
+    // requeued, so the camera keeps filling buffers throughout it and the loop restarts one
+    // whole period behind, leaving a permanent ~1-frame backlog (~43 ms at 23 Hz) between
+    // the sensor and the classifier reading shared memory. It could never raise throughput
+    // either -- usleep only ever rounds the loop period UP, so the achievable rate was
+    // capped at config->frameRate and never exceeded it.
+    if ( (config->frameRate > 0.0) && (!config->hardwareFrameRateActive) )
     {
         unsigned long microsecondsGrab   = endGrab - startGrab;
         unsigned long targetMicroseconds = (unsigned long)(1000000.0 / config->frameRate);
@@ -807,7 +842,7 @@ while (*config->keep_running && !termination_requested)
                             dataAsImage.channels     = 1;
                             dataAsImage.bitsperpixel = 8;
                             dataAsImage.image_size   = dataAsImage.width  * dataAsImage.height * dataAsImage.channels;
-                            dataAsImage.timestamp    = (unsigned int) GetTickCountMicroseconds() / 1000;
+                            dataAsImage.timestamp    = GetUnixTimeNanoseconds();
 
                             // Display some informations about the retrieved buffer
                             //printf ("Acquired %d×%d buffer\n",dataAsImage.width,dataAsImage.height);

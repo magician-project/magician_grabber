@@ -90,7 +90,11 @@ int stream_tactile(struct VideoFrame *frame, struct TactileBuffer* data)
 
     if (startWritingToVideoBufferPointer(frame))
     {
-        copy_to_shared_memory(frame, data->data ,data->data_size,(unsigned long) time(NULL));
+        // Unix nanoseconds (0 => the library stamps the current time in nanoseconds).
+        // Never time(NULL): it only advances once a second, so consecutive tactile frames
+        // shared one timestamp and any consumer using it as frame identity saw a single
+        // new frame per second.
+        copy_to_shared_memory(frame, data->data ,data->data_size, data->timestamp);
         stopWritingToVideoBufferPointer(frame);
         return 1;
     } else

@@ -13,7 +13,7 @@ struct TactileBuffer
 {
     float data[TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW]; /**< Interleaved sensor samples: [elem0_t0, elem1_t0, …, elem0_t1, …]. */
     unsigned int data_size;   /**< Number of valid floats currently stored in data[]. */
-    unsigned long timestamp;  /**< Microsecond host timestamp of the most recent sample in the buffer. */
+    unsigned long timestamp;  /**< Nanoseconds since the Unix epoch when the buffer was last filled, published with it (0 = time of publishing). */
 };
 
 

@@ -20,8 +20,11 @@ The mean of those channels is used as grayscale for chessboard corner detection.
 
 import sys
 import os
+import re
 import glob
 import csv
+import shutil
+import argparse
 
 import cv2
 import numpy as np
@@ -328,9 +331,23 @@ def pixel_to_3d(
 # Core calibration logic
 # -----------------------------------------------------------------------------
 
-def collect_calibration_views(base_dir, board_w, board_h, board_dim, show=True):
+def split_dataset_arg(dataset):
     """
-    Walk every frame* directory, debayer PNM images, detect chessboard corners.
+    Split a --dir value into (output_dir, frame_glob).
+
+    A plain directory keeps the historical behaviour and looks for 'frame*'
+    inside it.  A value containing glob characters is used as the frame-dir
+    pattern itself (e.g. '/data/Magician/calib_frame*'), which is needed when
+    the frame dirs sit in a directory holding unrelated datasets.
+    """
+    if any(c in dataset for c in '*?['):
+        return os.path.dirname(dataset) or '.', dataset
+    return dataset, os.path.join(dataset, 'frame*')
+
+
+def collect_calibration_views(frame_glob, board_w, board_h, board_dim, show=True):
+    """
+    Walk every frame dir matching frame_glob, debayer PNM images, detect chessboard corners.
 
     For each directory the function tries every PNM until a clean detection is
     found (or all are exhausted).  The associated robot pose is stored with the
@@ -345,12 +362,17 @@ def collect_calibration_views(base_dir, board_w, board_h, board_dim, show=True):
                    { 'frame_dir', 'pnm_file', 'robot_pose', 'camera_csv',
                      'gray_image', 'corners' }
     """
+    def frame_index(path):
+        """Trailing number of a frame dir name ('calib_frame12' -> 12)."""
+        m = re.search(r'(\d+)$', os.path.basename(path))
+        return int(m.group(1)) if m else -1
+
     frame_dirs = sorted(
-        glob.glob(os.path.join(base_dir, 'frame*')),
-        key=lambda p: int(os.path.basename(p).replace('frame', ''))
+        (p for p in glob.glob(frame_glob) if os.path.isdir(p)),
+        key=frame_index
     )
     if not frame_dirs:
-        print("No frame* directories found in", base_dir)
+        print("No frame directories matching", frame_glob)
         sys.exit(1)
 
     objp = np.zeros((board_h * board_w, 3), np.float32)
@@ -452,14 +474,16 @@ def collect_calibration_views(base_dir, board_w, board_h, board_dim, show=True):
 
 
 def run_calibration(base_dir=BASE_DIR, board_w=BOARD_W, board_h=BOARD_H,
-                    board_dim=BOARD_DIM, show=True):
+                    board_dim=BOARD_DIM, show=True, out=None):
+
+    base_dir, frame_glob = split_dataset_arg(base_dir)
 
     print("=" * 60)
-    print("Step 1 – collecting calibration views from frame* dirs")
+    print(f"Step 1 – collecting calibration views from {frame_glob}")
     print("=" * 60)
 
     opts, ipts, image_size, views = collect_calibration_views(
-        base_dir, board_w, board_h, board_dim, show=show
+        frame_glob, board_w, board_h, board_dim, show=show
     )
 
     if len(opts) < 4:
@@ -518,6 +542,14 @@ def run_calibration(base_dir=BASE_DIR, board_w=BOARD_W, board_h=BOARD_H,
         description="Polarization camera calibration (polar PNM frames)"
     )
     print(f"Saved Stereolabs-style calibration to {calib_path}")
+
+    if out:
+        out_path = os.path.join(out, 'last.calib') if os.path.isdir(out) else out
+        out_dir = os.path.dirname(os.path.abspath(out_path))
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+        shutil.copy2(calib_path, out_path)
+        print(f"Copied calibration to {out_path}")
 
     # --- save per-view pose CSV ----------------------------------------------
     poses_path = os.path.join(base_dir, 'calibration_poses.csv')
@@ -645,10 +677,24 @@ def run_calibration(base_dir=BASE_DIR, board_w=BOARD_W, board_h=BOARD_H,
 # -----------------------------------------------------------------------------
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    parser.add_argument('--dir', default=BASE_DIR,
+                        help='dataset directory holding frame* dirs, or a glob '
+                             'selecting them (e.g. /data/Magician/calib_frame*); '
+                             'results are written next to them '
+                             '(default: this script\'s directory)')
+    parser.add_argument('--out', default=None,
+                        help='copy the resulting last.calib here '
+                             '(a directory, or a full file path)')
+    parser.add_argument('--no-show', dest='show', action='store_false',
+                        help='do not open OpenCV windows (needed when headless)')
+    args = parser.parse_args()
+
     run_calibration(
-        base_dir  = BASE_DIR,
+        base_dir  = args.dir,
         board_w   = BOARD_W,
         board_h   = BOARD_H,
         board_dim = BOARD_DIM,
-        show      = True,
+        show      = args.show,
+        out       = args.out,
     )

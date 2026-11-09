@@ -173,7 +173,7 @@ void *tactile_thread(void *arg)
        unsigned int dataSize = TACTILE_STREAMING_ELEMENTS * TACTILE_STREAMING_WINDOW * sizeof(float);
        if ( tactile_write_shared_memory((void*) streaming_tactile_context->data.data,dataSize,TACTILE_STREAMING_WINDOW) )
        {
-         streaming_tactile_context->data.timestamp = now;
+         streaming_tactile_context->data.timestamp = GetUnixTimeNanoseconds();
          streaming_tactile_context->data.data_size = dataSize;
 
          //stream_image(shm_stream->frame,&dataAsImage);

@@ -40,15 +40,24 @@ fi
 
 
 
-if [ -d SharedMemoryVideoBuffers/Makefile ]
+# Prefer the copy the top-level project already builds (src/sharedMemoryVideoBuffers.c,
+# kept in sync via scripts/updateSharedMemoryMechanism.sh) instead of cloning and
+# building a second, independent copy of the library here - that's what used to
+# happen (via a broken "[ -d SharedMemoryVideoBuffers/Makefile ]" check, which
+# tests for a directory named after a file, so it was always false and this
+# branch ran on every single invocation) and it let this viewer drift onto a
+# different vintage of SharedMemoryManager.py/sharedMemoryVideoBuffers.c than the
+# rest of the project without anyone noticing.
+if [ -f ../../libSharedMemoryVideoBuffers.so ]
 then
-echo "Found SharedMemoryVideoBuffers" 
-else 
-git clone https://github.com/AmmarkoV/SharedMemoryVideoBuffers
-cd SharedMemoryVideoBuffers
-make
-cd ..
- ln -s SharedMemoryVideoBuffers/libSharedMemoryVideoBuffers.so ./
+echo "Using the already-built top-level libSharedMemoryVideoBuffers.so"
+ln -sf ../../libSharedMemoryVideoBuffers.so ./libSharedMemoryVideoBuffers.so
+elif [ -f libSharedMemoryVideoBuffers.so ] || [ -L libSharedMemoryVideoBuffers.so ]
+then
+echo "Found libSharedMemoryVideoBuffers.so"
+else
+echo "Top-level libSharedMemoryVideoBuffers.so not found - run 'make libSharedMemoryVideoBuffers.so' (or scripts/updateSharedMemoryMechanism.sh) from the project root first."
+exit 1
 fi
 
 
