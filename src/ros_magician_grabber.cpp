@@ -415,7 +415,7 @@ int main(int argc, char **argv)
     cfg.manual_trigger_light = 1;
 
     // Modules available to use
-    cfg.interceptKeyboard = 1;
+    cfg.interceptKeyboard = 0; //Same as --nokb, use --kb to enable keyboard interception
     cfg.useRAM       = 0;
     cfg.useArduino   = 1;
     cfg.useTeensy    = 0;
