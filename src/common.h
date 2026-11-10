@@ -238,6 +238,21 @@ static void broadcasting(unsigned long frameNumber)
 }
 
 
+static void printDuration(unsigned long totalSeconds)
+{
+  unsigned long days    = totalSeconds / 86400;
+  unsigned long hours   = (totalSeconds % 86400) / 3600;
+  unsigned long minutes = (totalSeconds % 3600) / 60;
+  unsigned long seconds = totalSeconds % 60;
+
+  printf(GREEN " ");
+  if (days>0)         { printf("%lud %02luh %02lum %02lus",days,hours,minutes,seconds); } else
+  if (hours>0)        { printf("%luh %02lum %02lus",hours,minutes,seconds); } else
+  if (minutes>0)      { printf("%lum %02lus",minutes,seconds); } else
+                      { printf("%lu sec",seconds); }
+  printf(" " NORMAL);
+}
+
 static void progress_bar(unsigned long runningTimeInSeconds,unsigned long maxTimeToGrabForInSeconds)
 {
   #define PROGRESS_BAR_LENGTH 10  // Length of the progress bar

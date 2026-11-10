@@ -573,9 +573,9 @@ int main (int argc, char **argv)
          printf("\r");
          //-----------------------------------------------------------------------------------------------------------------
          if (cfg.streamData)   { broadcasting(camera_config.framesCaptured); }
-         if (cfg.run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
+         if (cfg.run_forever)  { printDuration(runningTimeInSeconds); } else
                           {
-                           printf(GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
+                           printDuration(cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds);
                            progress_bar(runningTimeInSeconds,cfg.maxTimeToGrabForInSeconds);
                           }
 
@@ -583,7 +583,9 @@ int main (int argc, char **argv)
             {
              printf("|Cam %lu ",camera_config.framesCaptured);
              printHz(camera_config.actualFrameRate);
-             printf(" Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
+             printf(" Ok %lu",camera_config.n_completed_buffers);
+             if (camera_config.n_failures>0)  { printf("/Fail %lu",camera_config.n_failures); }
+             if (camera_config.n_underruns>0) { printf("/Under %lu",camera_config.n_underruns); }
             }
 
          if (cfg.useArduino)  { if (arduino_config.receivedDataFrames==0) {printf(RED);}

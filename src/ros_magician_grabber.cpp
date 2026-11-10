@@ -671,16 +671,18 @@ int main(int argc, char **argv)
         //-----------------------------------------------------------------------------------------------------------------
 
         if (cfg.streamData) { broadcasting(camera_config.framesCaptured); }
-        if (cfg.run_forever)  { printf(GREEN " %lu sec " NORMAL, runningTimeInSeconds ); } else
+        if (cfg.run_forever)  { printDuration(runningTimeInSeconds); } else
                           {
-                           printf(GREEN " %lu sec " NORMAL,cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds );
+                           printDuration(cfg.maxTimeToGrabForInSeconds - runningTimeInSeconds);
                            progress_bar(runningTimeInSeconds,cfg.maxTimeToGrabForInSeconds);
                           }
 
         if (cfg.useCamera)
             {
              printf("|Cam %lu %0.2fHz ",camera_config.framesCaptured, camera_config.actualFrameRate);
-             printf(" Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
+             printf(" Ok %lu",camera_config.n_completed_buffers);
+             if (camera_config.n_failures>0)  { printf("/Fail %lu",camera_config.n_failures); }
+             if (camera_config.n_underruns>0) { printf("/Under %lu",camera_config.n_underruns); }
             }
 
         if (cfg.useArduino)
