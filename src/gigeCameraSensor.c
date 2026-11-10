@@ -317,6 +317,43 @@ unsigned long getSleepTimeBasedOnFramerate(double frameRate)
   return timeToSleepToWaitFor1Frame;
 }
 
+void (*gigecamera_onStartupFailure)(void) = NULL;
+
+static void gigecamera_terminateStartup(void)
+{
+    if (gigecamera_onStartupFailure!=NULL) { gigecamera_onStartupFailure(); }
+    exit(1);
+}
+
+/* Line3 carries ExposureActive, which gates the LED COBs. Write it and read it back,
+ * the camera must not acquire unless this leaves *error unset. */
+static void gigecamera_enforceExposureLine(ArvCamera *camera, GError **error)
+{
+    static const char * const features[][2] = { {"LineSelector","Line3"}, {"LineMode","Output"}, {"LineSource","ExposureActive"} };
+
+    for (unsigned int i=0; i<3; i++)
+    {
+        arv_camera_set_string (camera, features[i][0], features[i][1], error);
+        if (*error) { return; }
+    }
+    arv_camera_set_boolean (camera, "LineInverter", FALSE, error);
+    if (*error) { return; }
+
+    for (unsigned int i=0; i<3; i++)
+    {
+        const char *value = arv_camera_get_string (camera, features[i][0], error);
+        if (*error) { return; }
+        if ((value==NULL) || (strcmp(value,features[i][1])!=0))
+        {
+            g_set_error (error, g_quark_from_static_string("gigecamera"), 1, "%s reads back as %s instead of %s",
+                         features[i][0], value ? value : "nothing", features[i][1]);
+            return;
+        }
+    }
+    if (arv_camera_get_boolean (camera, "LineInverter", error) && !*error)
+       { g_set_error_literal (error, g_quark_from_static_string("gigecamera"), 1, "LineInverter reads back as enabled"); }
+}
+
 int gigecamera_startStream(GiGECameraConfig * context)
 {
     fprintf(stderr,"Starting camera stream");
@@ -363,12 +400,12 @@ int gigecamera_startStream(GiGECameraConfig * context)
     if (camera == NULL)
     {
         fprintf (stderr,"\nNo camera found, terminating grabber\n");
-        exit(1);
+        gigecamera_terminateStartup();
     }
     if (error != NULL)
     {
         fprintf (stderr,"\nError while searching for camera\n");
-        exit(1);
+        gigecamera_terminateStartup();
     }
 
     printf ("Found a device ..\n");
@@ -378,6 +415,17 @@ int gigecamera_startStream(GiGECameraConfig * context)
         ArvStream *stream = NULL;
 
         printf ("Found camera '%s'\n", arv_camera_get_model_name (camera, NULL));
+
+        {
+            GError *lineError = NULL;
+            gigecamera_enforceExposureLine (camera, &lineError);
+            if (lineError != NULL)
+            {
+                fprintf (stderr,"\nCould not enforce the Line3 exposure output (%s), halting to protect LED COBs\n",lineError->message);
+                g_clear_error (&lineError);
+                gigecamera_terminateStartup();
+            }
+        }
 
         arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, &error);
 
@@ -424,7 +472,7 @@ int gigecamera_startStream(GiGECameraConfig * context)
             } else
             {
               fprintf (stderr,"\nFailed allocating %u buffers\n",ARV_VIEWER_N_BUFFERS);
-              exit(1);
+              gigecamera_terminateStartup();
             }
 
 
@@ -574,6 +622,115 @@ int gigecamera_stopStream(GiGECameraConfig * context)
 }
 
 
+/* One attempt at bringing a lost camera back. Deliberately separate from
+ * gigecamera_startStream(), which terminates the program on failure. Every step that
+ * affects the light timing is checked: a camera that rebooted has lost the ExposureActive
+ * output that gates the LED COBs, so never start acquiring without it. */
+static int gigecamera_tryReopen(GiGECameraConfig *config, char logFailure)
+{
+    GError *error = NULL;
+    ArvStream *stream = NULL;
+
+    arv_update_device_list();
+    ArvCamera *camera = arv_camera_new (NULL, &error);
+    if (camera == NULL)
+    {
+        if (logFailure) { fprintf(stderr,"\nWaiting for camera: %s\n", error ? error->message : "not found"); }
+        g_clear_error(&error);
+        return 0;
+    }
+
+    if (!error) { arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, &error); }
+    if (!error) { gigecamera_enforceExposureLine (camera, &error); }
+    if (!error) { stream = arv_camera_create_stream (camera, NULL, NULL, NULL, &error); }
+
+    if (!error && !ARV_IS_STREAM(stream))
+    {
+        if (logFailure) { fprintf(stderr,"\nCamera found but no stream could be created\n"); }
+        g_clear_object(&camera);
+        return 0;
+    }
+
+    if (!error)
+    {
+        #if TRYHARD_MODE
+        g_object_set(stream,
+                     "packet-resend", ARV_GV_STREAM_PACKET_RESEND_ALWAYS,
+                     "packet-timeout", 40000,
+                     "frame-retention", 200000,
+                     "packet-request-ratio", 0.5,
+                     "socket-buffer-size", 32*1024*1024,
+                     NULL);
+        #endif
+
+        size_t payload = arv_camera_get_payload (camera, &error);
+        if (!error)
+        {
+            for (unsigned int i = 0; i < ARV_VIEWER_N_BUFFERS; i++)
+                arv_stream_push_buffer (stream, arv_buffer_new (payload, NULL));
+        }
+    }
+
+    if (!error && config->exposure!=0)     { arv_camera_set_exposure_time (camera, config->exposure, &error); }
+    if (!error && config->gain!=0.0)       { arv_camera_set_gain (camera, config->gain, &error); }
+    if (!error && config->blackLevel!=0.0) { arv_camera_set_black_level (camera, config->blackLevel, &error); }
+
+    if (!error)
+    {
+        config->hardwareFrameRateActive = 0;
+        if (config->frameRate!=0.0)
+        {
+            GError *frameRateError = NULL;
+            arv_camera_set_frame_rate (camera, config->frameRate, &frameRateError);
+            if (frameRateError != NULL) { g_clear_error(&frameRateError); }
+            else                        { config->hardwareFrameRateActive = 1; }
+        }
+    }
+
+    if (!error) { arv_camera_start_acquisition (camera, &error); }
+
+    if (error)
+    {
+        if (logFailure) { fprintf(stderr,"\nCamera reopen failed: %s\n", error->message); }
+        g_clear_error(&error);
+        g_clear_object(&stream);
+        g_clear_object(&camera);
+        return 0;
+    }
+
+    config->camera = (void*) camera;
+    config->stream = (void*) stream;
+    return 1;
+}
+
+/* Drop the dead connection and retry until the camera returns or the program is stopping.
+ * Returns 0 only when stopping, in which case config->camera and stream are NULL. */
+static int gigecamera_reopen(GiGECameraConfig *config)
+{
+    ArvCamera *camera = (ArvCamera *) config->camera;
+    ArvStream *stream = (ArvStream *) config->stream;
+    config->camera = NULL;
+    config->stream = NULL;
+
+    arv_camera_stop_acquisition (camera, NULL);
+    g_clear_object (&stream);
+    g_clear_object (&camera);
+
+    unsigned int attempts = 0;
+    while (*config->keep_running && !termination_requested)
+    {
+        if (gigecamera_tryReopen(config,(attempts++ % 10)==0))
+        {
+            config->reopenCount++;
+            fprintf(stderr,"\nCamera reopened, streaming resumed\n");
+            return 1;
+        }
+        sleep(1);
+    }
+    return 0;
+}
+
+
 int camera_callback_relay(GiGECameraConfig *config, unsigned long timestamp, struct Image *dataAsImage)
 {
     if (config->callback)
@@ -643,6 +800,12 @@ void *gigecamera_thread(void *arg)
 
     unsigned long startTime = GetTickCountMicroseconds();
 
+    // Long enough that a brief link hiccup recovers by itself without a reopen.
+    unsigned long lastGoodFrameTime = startTime;
+    unsigned long reopenAfterMicroseconds = 5000000UL;
+    if ( (config->frameRate > 0.0) && (5000000.0 / config->frameRate > reopenAfterMicroseconds) )
+       { reopenAfterMicroseconds = (unsigned long)(5000000.0 / config->frameRate); }
+
     StreamingContext * shm_stream = NULL;
     if (config->camera_shm_stream!=NULL)
           {
@@ -660,6 +823,16 @@ while (*config->keep_running && !termination_requested)
 {
     //char lastFrameIsBroken = 0;
     startGrab = GetTickCountMicroseconds();
+
+    // Only a camera that has already delivered frames is reopened.
+    if (config->autoReopen && (frameNumber>0) && (startGrab-lastGoodFrameTime > reopenAfterMicroseconds))
+    {
+        fprintf(stderr,"\nNo camera frames for %lu seconds, reopening camera\n",(startGrab-lastGoodFrameTime)/1000000);
+        if (!gigecamera_reopen(config)) { break; }
+        stream = (ArvStream *) config->stream;
+        lastGoodFrameTime = GetTickCountMicroseconds();
+        continue;
+    }
 
     // Prefer timeout_pop to avoid busy waiting.
     // Timeout is in microseconds in Aravis; see popTimeoutMicroseconds above.
@@ -776,6 +949,7 @@ while (*config->keep_running && !termination_requested)
     // Update counters
     frameNumber++;
     config->framesCaptured = frameNumber;
+    lastGoodFrameTime = GetTickCountMicroseconds();
 
     // 3) Requeue buffer ASAP once done consuming its data
     arv_stream_push_buffer(stream, buffer);
@@ -921,7 +1095,8 @@ while (*config->keep_running && !termination_requested)
     if (shm_stream!=NULL)
            { stopStream(shm_stream); }
 
-    gigecamera_stopStream(config);
+    if (config->camera!=NULL) { gigecamera_stopStream(config); } else
+                              { config->running = 0; }
     return NULL;
 }
 

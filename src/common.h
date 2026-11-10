@@ -37,8 +37,8 @@ extern "C"
 #include "colors.h"
 #include "performance.h"
 
-#ifndef SHOW_USB_DISCONNECT_IMAGE
-#define SHOW_USB_DISCONNECT_IMAGE 1  /**< Set to 0 to stop the ROS grabber flashing doc/usb_dc.jpg when a serial device drops. */
+#ifndef SHOW_DISCONNECT_IMAGE
+#define SHOW_DISCONNECT_IMAGE 1  /**< Set to 0 to stop the ROS grabber flashing doc/usb_dc.jpg or doc/camera_dc.jpg when a device is missing or drops. */
 #endif
 
 #define MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS 750  /**< Soft cap on exposure time in µs; requires --I_know_what_I_am_doing to exceed. */

@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
 
@@ -401,17 +402,18 @@ static const char disconnectFlashScript[] =
     "Gtk.main()\n";
 
 /* Only the main status loop touches this, so there is one popup at most however many
-   devices drop, and it is flashed at most once per outage. */
+   devices drop, and each device type flashes at most once per outage. */
 static pid_t disconnectViewerPid = -1;
+static unsigned long disconnectViewerStarted = 0;
 
-static void spawnDisconnectViewer(void)
+static pid_t spawnImageViewer(const char *image)
 {
     static char warned = 0;
-    if (!getenv("DISPLAY") || access(USB_DISCONNECT_IMAGE,R_OK)!=0)
+    if (!getenv("DISPLAY") || access(image,R_OK)!=0)
     {
-        if (!warned) { fprintf(stderr,"\nCannot show %s (no DISPLAY or missing file)\n",USB_DISCONNECT_IMAGE); }
+        if (!warned) { fprintf(stderr,"\nCannot show %s (no DISPLAY or missing file)\n",image); }
         warned = 1;
-        return;
+        return -1;
     }
 
     pid_t pid = fork();
@@ -426,21 +428,84 @@ static void spawnDisconnectViewer(void)
         for (int fd=3; fd<4096; fd++) { close(fd); }
 
         execl("/usr/bin/env","env","-u","LD_LIBRARY_PATH","GDK_BACKEND=x11",
-              "/usr/bin/python3","-I","-c",disconnectFlashScript,USB_DISCONNECT_IMAGE,(char*)NULL);
+              "/usr/bin/python3","-I","-c",disconnectFlashScript,image,(char*)NULL);
         _exit(127);
     }
-    if (pid>0) { disconnectViewerPid = pid; }
+    return pid;
 }
 
-static void updateDisconnectViewer(int deviceDown,unsigned long now)
+/* A sensor failed during startup and the program is about to terminate: show the picture
+   and block until it closes, otherwise the popup would die with us. Can be reached from
+   both the main and camera threads, only the first caller shows anything. */
+static void showStartupFailureImage(const char *image)
 {
-    if (!SHOW_USB_DISCONNECT_IMAGE) { return; }
+    static volatile int alreadyShown = 0;
+    if (!SHOW_DISCONNECT_IMAGE) { return; }
+    if (__sync_lock_test_and_set(&alreadyShown,1)) { return; }
 
-    const unsigned long showAfterDownFor = 1000000UL;     // also skips the startup race
-    const unsigned long minTimeBetweenFlashes = 30000000UL; // a flapping cable must not flash repeatedly
+    pid_t pid = spawnImageViewer(image);
+    if (pid<=0) { return; }
+    for (int i=0; i<500; i++)
+    {
+        if (waitpid(pid,NULL,WNOHANG)==pid) { return; }
+        usleep(10000);
+    }
+    kill(pid,SIGKILL);
+    waitpid(pid,NULL,0);
+}
+
+static void cameraStartupFailed(void) { showStartupFailureImage(CAMERA_DISCONNECT_IMAGE); }
+
+static void exitIfSerialDeviceMissing(const char *name,const char *path)
+{
+    if (access(path,R_OK|W_OK)==0) { return; }
+    fprintf(stderr,RED "%s not available at startup on %s (%s), terminating\n" NORMAL,name,path,strerror(errno));
+    showStartupFailureImage(USB_DISCONNECT_IMAGE);
+    exit(1);
+}
+
+struct DeviceOutage { unsigned long downSince, healthySince; char shown; };
+
+/* Each picture is shown once for its type of event. It stays silent through any further
+   drops, however often the link flaps, until the device has been healthy without
+   interruption for rearmAfterHealthyFor. */
+static void updateDeviceOutage(DeviceOutage *outage,const char *image,int deviceDown,unsigned long now)
+{
+    const unsigned long showAfterDownFor = 1000000UL;      // also skips the startup race
+    const unsigned long rearmAfterHealthyFor = 300000000UL; // 5 minutes
+
+    if (!deviceDown)
+    {
+        outage->downSince = 0;
+        if (outage->shown)
+        {
+            if (outage->healthySince==0) { outage->healthySince = now; }
+            if (now-outage->healthySince>=rearmAfterHealthyFor)
+            {
+                outage->shown = 0;
+                outage->healthySince = 0;
+            }
+        }
+        return;
+    }
+
+    outage->healthySince = 0;
+    if (outage->downSince==0) { outage->downSince = now; }
+    if (!outage->shown && disconnectViewerPid<0 && now-outage->downSince>=showAfterDownFor)
+    {
+        outage->shown = 1;
+        disconnectViewerStarted = now;
+        disconnectViewerPid = spawnImageViewer(image);
+    }
+}
+
+static void updateDisconnectViewer(int usbDown,int cameraDown,unsigned long now)
+{
+    if (!SHOW_DISCONNECT_IMAGE) { return; }
+
     const unsigned long maxPopupLifetime = 5000000UL;     // the popup closes itself; this is a backstop
-    static unsigned long downSince = 0, lastFlash = 0;
-    static char shownThisOutage = 0, warned = 0;
+    static DeviceOutage usbOutage = {0,0,0}, cameraOutage = {0,0,0};
+    static char warned = 0;
 
     if (disconnectViewerPid>0)
     {
@@ -454,24 +519,11 @@ static void updateDisconnectViewer(int deviceDown,unsigned long now)
             }
             disconnectViewerPid = -1;
         }
-        else if (now-lastFlash>maxPopupLifetime) { kill(disconnectViewerPid,SIGKILL); }
+        else if (now-disconnectViewerStarted>maxPopupLifetime) { kill(disconnectViewerPid,SIGKILL); }
     }
 
-    if (!deviceDown)
-    {
-        downSince = 0;
-        shownThisOutage = 0;
-        return;
-    }
-
-    if (downSince==0) { downSince = now; }
-    if (!shownThisOutage && disconnectViewerPid<0 && now-downSince>=showAfterDownFor
-        && (lastFlash==0 || now-lastFlash>=minTimeBetweenFlashes))
-    {
-        shownThisOutage = 1;
-        lastFlash = now;
-        spawnDisconnectViewer();
-    }
+    updateDeviceOutage(&usbOutage,USB_DISCONNECT_IMAGE,usbDown,now);
+    updateDeviceOutage(&cameraOutage,CAMERA_DISCONNECT_IMAGE,cameraDown,now);
 }
 
 static void closeDisconnectViewer(void)
@@ -619,6 +671,13 @@ int main(int argc, char **argv)
     { fprintf(stderr,"ATI NetFT address : %s:%d\n",atinetft_config.ip_address,atinetft_config.port); }
 
 
+    //A sensor missing at startup is fatal, reconnecting is only for sensors that were working.
+    if (!cfg.simulate)
+    {
+        if (cfg.useArduino) { exitIfSerialDeviceMissing("Controller",arduino_config.port_name); }
+        if (cfg.useTeensy)  { exitIfSerialDeviceMissing("Teensy",teensy_config.port_name); }
+    }
+
     //Make arduino_cfg visible!
     cfg.arduino_cfg = (void*) &arduino_config;
 
@@ -655,7 +714,8 @@ int main(int argc, char **argv)
       if (i!=0)
                            {
                                fprintf(stderr,"Failed setting Aravis Camera Exposure pins, halting to protect LED COBs\n");
-                               abort();
+                               showStartupFailureImage(CAMERA_DISCONNECT_IMAGE);
+                               exit(1);
                            }
     }
 
@@ -695,6 +755,7 @@ int main(int argc, char **argv)
             if (!arduino_serialReady(&arduino_config))
             {
                 fprintf(stderr,"Controller did not become ready within 30 seconds\n");
+                if (!stop) { showStartupFailureImage(USB_DISCONNECT_IMAGE); }
                 captureFailure = 1;
                 cfg.keep_running = 0;
             }
@@ -706,11 +767,25 @@ int main(int argc, char **argv)
                       if (teensy_port) { fprintf(stderr,GREEN "Teensy found on: %s\n" NORMAL, teensy_port); } else
                                        { fprintf(stderr,RED "Teensy port not found\n" NORMAL); exit(1); }*/
                         pthread_create(&teensy_tid,    NULL, arduino_thread,    &teensy_config);
+
+                        // Reconnection is only for a Teensy that was working, so it has to stream first.
+                        unsigned int waited = 0;
+                        while (!cfg.simulate && teensy_config.receivedDataFrames==0 && cfg.keep_running && !stop && waited<1000)
+                        { usleep(10000); waited++; }
+                        if (!cfg.simulate && teensy_config.receivedDataFrames==0 && cfg.keep_running && !stop)
+                        {
+                            fprintf(stderr,RED "Teensy sent no data within 10 seconds, terminating\n" NORMAL);
+                            showStartupFailureImage(USB_DISCONNECT_IMAGE);
+                            captureFailure = 1;
+                            cfg.keep_running = 0;
+                        }
                      }
 
     // Start Threads
     int cameraThreadStarted = 0;
     if (cfg.useCamera && cfg.keep_running)   {
+                       gigecamera_onStartupFailure = cameraStartupFailed;
+                       camera_config.autoReopen = 1;
                        pthread_create(&gigecamera_tid, NULL, gigecamera_thread, &camera_config);
                        cameraThreadStarted = 1;
                        fprintf(stderr,"Waiting for camera to wake up ..\n");
@@ -729,6 +804,7 @@ int main(int argc, char **argv)
                          if (timeCheck>300)
                          {
                            fprintf(stderr,"\nCamera timed-out (%u ticks)..\n",timeCheck);
+                           showStartupFailureImage(CAMERA_DISCONNECT_IMAGE);
                            captureFailure = 1;
                            cfg.keep_running = 0; //<- this will make the program exit
                            break;
@@ -749,6 +825,15 @@ int main(int argc, char **argv)
 
     unsigned long startTime = GetTickCountMicroseconds();
     unsigned long currentTime = startTime;
+
+    // The camera counts as down when frames stop arriving, which covers both an unplugged
+    // camera and one only delivering broken buffers.
+    unsigned long lastCameraFrames = camera_config.framesCaptured;
+    unsigned long lastCameraFrameTime = startTime;
+    unsigned long cameraStallLimit = 2000000UL;
+    if ( (cfg.frameRate>0.0) && (3000000.0/cfg.frameRate>cameraStallLimit) )
+       { cameraStallLimit = (unsigned long) (3000000.0/cfg.frameRate); }
+
     printf("ROS Node started.\n");
     // Run until flag is cleared (placeholder for user signal handling)
     while ((cfg.keep_running) && (stop==0))
@@ -797,6 +882,7 @@ int main(int argc, char **argv)
              printf(" Ok %lu",camera_config.n_completed_buffers);
              if (camera_config.n_failures>0)  { printf("/Fail %lu",camera_config.n_failures); }
              if (camera_config.n_underruns>0) { printf("/Under %lu",camera_config.n_underruns); }
+             if (camera_config.reopenCount>0) { printf("/%u r/c",camera_config.reopenCount); }
             }
 
         if (cfg.useArduino)
@@ -816,8 +902,15 @@ int main(int argc, char **argv)
         printf("|          \r");
         fflush(stdout);
 
+        if (camera_config.framesCaptured!=lastCameraFrames)
+        {
+            lastCameraFrames = camera_config.framesCaptured;
+            lastCameraFrameTime = currentTime;
+        }
+
         updateDisconnectViewer( (arduino_config.autoReconnect && !arduino_serialReady(&arduino_config)) ||
                                 (teensy_config.autoReconnect  && !arduino_serialReady(&teensy_config)),
+                                cfg.useCamera && (currentTime-lastCameraFrameTime>cameraStallLimit),
                                 currentTime );
 
 

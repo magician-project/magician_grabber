@@ -84,13 +84,23 @@ the host waits for its firmware version reply before restoring the existing `i`
 and `r` serial commands. `--arduino <path>` overrides this default. The Teensy
 remains a separate device on `/dev/ttyACM0`. It is also reopened after USB
 re-enumeration; the host sends `i` and resumes once a complete line of data
-arrives. It must be present at startup. The ROS status line adds `/N r/c` after
+arrives. The ROS status line adds `/N r/c` after
 a device's sample count only after a successful reconnection.
 
-When a device drops, the ROS binary flashes `doc/usb_dc.jpg` in the centre of the
-primary screen for 3 seconds, without taking keyboard focus, at most once per
-outage and once every 30 seconds. This needs `python3-gi` and `gir1.2-gtk-3.0`,
-which Ubuntu 22.04 desktop includes. Set `SHOW_USB_DISCONNECT_IMAGE` to 0 in
+Reconnection only applies to a device that was working. If the controller or the
+Teensy is missing at startup, or never comes up, the ROS binary shows
+`doc/usb_dc.jpg` and terminates. A camera that cannot be found at startup shows
+`doc/camera_dc.jpg` and terminates the same way.
+
+While running, the ROS binary flashes `doc/usb_dc.jpg` when a serial device drops
+and `doc/camera_dc.jpg` when camera frames stop arriving, in the centre of the
+primary screen for 3 seconds, without taking keyboard focus. Each picture is shown
+once, then stays silent through further drops until that device has been healthy
+for 5 minutes without interruption. A camera that was delivering frames and then
+stalls for 5 seconds is reopened with its original settings, retrying until it
+returns, and the status line adds `/N r/c` after a reopen. This
+needs `python3-gi` and `gir1.2-gtk-3.0`, which Ubuntu 22.04 desktop includes. Set
+`SHOW_DISCONNECT_IMAGE` to 0 in
 `src/common.h` to turn it off.
 
 ---

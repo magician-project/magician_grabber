@@ -44,9 +44,14 @@ typedef struct
      * shifts every later initialiser (keep_running included) instead of failing to compile. */
     char hardwareFrameRateActive;   /**< 1 once the camera accepted arv_camera_set_frame_rate(), so the
                                          capture loop must not pace a second time in software. */
+    char autoReopen;                /**< When 1, reopen the camera if a stream that was delivering frames stalls. */
+    unsigned int reopenCount;       /**< Successful camera reopens after the first connection. */
 } GiGECameraConfig;
 
 
+
+/** Optional hook called just before the camera thread terminates the program because startup failed. */
+extern void (*gigecamera_onStartupFailure)(void);
 
 void *gigecamera_thread(void *arg);
 
