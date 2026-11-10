@@ -394,7 +394,7 @@ int main(int argc, char **argv)
     GlobalConfig cfg={};
 
     //Set defaults for arduino/teensy
-    snprintf(cfg.arduinoPath,128,"%s","/dev/ttyUSB0");
+    snprintf(cfg.arduinoPath,128,"%s","/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A5069RR4-if00-port0");
     snprintf(cfg.teensyPath,128,"%s","/dev/ttyACM0");
     snprintf(cfg.cameraStreamName,128,"%s","stream1");
     snprintf(cfg.tactileStreamName,128,"%s","stream_tactile");
@@ -486,7 +486,10 @@ int main(int argc, char **argv)
     GiGECameraConfig camera_config     = {&cfg, "3205040", "camera.csv", cfg.width, cfg.height, cfg.exposure, cfg.gain, cfg.blackLevel, cfg.frameRate, 0, NULL, &cfg.keep_running,0 , 0, 0, 0, 0, NULL, NULL, NULL, NULL, NULL };
     ATINetFTConfig atinetft_config     = {&cfg, "192.168.137.201",  49152, "force.csv",  NULL, &cfg.keep_running,0 , 0, 0, 0.0, (void*) ros_force_callback};
     ArduinoSerialConfig teensy_config  = {&cfg, "/dev/ttyACM0",    "accelerometer.csv", 115200, NULL, &cfg.keep_running, 0, NULL , 0, 0, 0.0,(void*)  ros_accelerometer_callback};
-    ArduinoSerialConfig arduino_config = {&cfg, "/dev/ttyUSB0",    "controller.csv",    115200, NULL, &cfg.keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};
+    ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later", "controller.csv", 115200, NULL, &cfg.keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};
+    // This firmware uses the legacy single-byte light commands. Reopen its FTDI
+    // serial port after USB re-enumeration without touching camera acquisition.
+    arduino_config.autoReconnect = cfg.useArduino && cfg.manual_trigger_light && !cfg.isPico2 && !cfg.exposure_locked_light && !cfg.simulate;
 
 
     //Copy teensy/arduino port
@@ -564,7 +567,25 @@ int main(int argc, char **argv)
                          }
 
     //Arduino takes some time to powerup
-    if (cfg.useArduino)  { pthread_create(&arduino_tid,    NULL, arduino_thread,    &arduino_config);  }
+    int captureFailure = 0;
+    if (cfg.useArduino)
+    {
+        pthread_create(&arduino_tid,NULL,arduino_thread,&arduino_config);
+        if (arduino_config.autoReconnect)
+        {
+            // Do not start the camera callback until the Nano has answered the
+            // version probe and received the normal i/r startup commands.
+            unsigned int waited = 0;
+            while (!arduino_serialReady(&arduino_config) && cfg.keep_running && !stop && waited<3000)
+            { usleep(10000); waited++; }
+            if (!arduino_serialReady(&arduino_config))
+            {
+                fprintf(stderr,"Controller did not become ready within 30 seconds\n");
+                captureFailure = 1;
+                cfg.keep_running = 0;
+            }
+        }
+    }
     if (cfg.useTeensy)   {
                       /*
                       char *teensy_port = find_teensy_port();
@@ -574,8 +595,10 @@ int main(int argc, char **argv)
                      }
 
     // Start Threads
-    if (cfg.useCamera)   {
+    int cameraThreadStarted = 0;
+    if (cfg.useCamera && cfg.keep_running)   {
                        pthread_create(&gigecamera_tid, NULL, gigecamera_thread, &camera_config);
+                       cameraThreadStarted = 1;
                        fprintf(stderr,"Waiting for camera to wake up ..\n");
 
                        //This is the most complex loop to start
@@ -592,6 +615,7 @@ int main(int argc, char **argv)
                          if (timeCheck>300)
                          {
                            fprintf(stderr,"\nCamera timed-out (%u ticks)..\n",timeCheck);
+                           captureFailure = 1;
                            cfg.keep_running = 0; //<- this will make the program exit
                            break;
                          }
@@ -643,7 +667,6 @@ int main(int argc, char **argv)
         currentTime = GetTickCountMicroseconds();
         unsigned long runningTimeInSeconds = (currentTime - startTime) / 1000000;
 
-
         printf("\r");
         //-----------------------------------------------------------------------------------------------------------------
 
@@ -660,7 +683,12 @@ int main(int argc, char **argv)
              printf(" Ok %lu/Fail %lu/Under %lu",camera_config.n_completed_buffers, camera_config.n_failures,camera_config.n_underruns);
             }
 
-        if (cfg.useArduino)  { printf("|Arduino %0.2fHz/%lu samples",arduino_config.Hz, arduino_config.receivedDataFrames ); }
+        if (cfg.useArduino)
+        {
+            printf("|Arduino %0.2fHz/%lu samples",arduino_config.Hz,arduino_config.receivedDataFrames);
+            unsigned int reconnects = arduino_reconnectCount(&arduino_config);
+            if (reconnects>0) { printf("/%u r/c",reconnects); }
+        }
         if (cfg.useTeensy)   { printf("|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
         if (cfg.useATIForce) { printf("|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
         //-----------------------------------------------------------------------------------------------------------------
@@ -698,6 +726,6 @@ int main(int argc, char **argv)
 
 
     rclcpp::shutdown();
-    if (cfg.useCamera)   { fprintf(stderr,"Releasing Camera\n");  pthread_join(gigecamera_tid, NULL); }
-    return 0;
+    if (cameraThreadStarted)   { fprintf(stderr,"Releasing Camera\n");  pthread_join(gigecamera_tid, NULL); }
+    return captureFailure ? 1 : 0;
 }

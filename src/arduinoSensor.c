@@ -13,11 +13,42 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
+#include <pthread.h>
+#include <sys/stat.h>
 
 #include "common.h"
 #include <sys/ioctl.h>
 
 #include "arduinoSensor.h"
+
+/* The camera callback writes while the serial thread reads and may reopen the fd. */
+static pthread_mutex_t serialFdMutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void arduino_find_stable_port(ArduinoSerialConfig *context)
+{
+    snprintf(context->reconnectPath,sizeof(context->reconnectPath),"%s",context->port_name);
+    if (strncmp(context->port_name,"/dev/serial/by-id/",18)==0) { return; }
+
+    struct stat original;
+    if (stat(context->port_name,&original)!=0) { return; }
+    DIR *dir = opendir("/dev/serial/by-id");
+    if (!dir) { return; }
+    struct dirent *entry;
+    while ((entry=readdir(dir))!=NULL)
+    {
+        if (entry->d_name[0]=='.') { continue; }
+        char path[sizeof(context->reconnectPath)];
+        if (snprintf(path,sizeof(path),"/dev/serial/by-id/%s",entry->d_name)>=(int)sizeof(path)) { continue; }
+        struct stat candidate;
+        if (stat(path,&candidate)==0 && candidate.st_rdev==original.st_rdev)
+        {
+            snprintf(context->reconnectPath,sizeof(context->reconnectPath),"%s",path);
+            break;
+        }
+    }
+    closedir(dir);
+}
 
 const double ADC_RESOLUTION = 1024.0;  // ADC resolution 12 bit
 const double SUPPLY_VOLTAGE = 3.3;     // Supply voltage (V)
@@ -26,7 +57,7 @@ const double SENSITIVITY    = 0.330;   // Sensitivity (V/g)
 const double GRAVITY        = 9.81;    // Gravity acceleration (m/s^2)
 
 
-int serialport_init(const char* serialport, int baud, int pico2Mode)
+int serialport_init(const char* serialport, int baud, int pico2Mode, int quiet)
 {
     struct termios toptions={0};
 
@@ -35,6 +66,8 @@ int serialport_init(const char* serialport, int baud, int pico2Mode)
 
     if (fd == -1)
     {
+      if (!quiet)
+      {
         fprintf(stderr,RED "serialport_init: Unable to open port\n" NORMAL);
 
         fprintf(stderr,"Maybe consider :\n");
@@ -48,6 +81,7 @@ int serialport_init(const char* serialport, int baud, int pico2Mode)
         {
          fprintf(stderr," Could not check for arduino-ide..\n");
         }
+      }
 
         return -1;
     }
@@ -58,7 +92,8 @@ int serialport_init(const char* serialport, int baud, int pico2Mode)
 
     if (tcgetattr(fd, &toptions) < 0)
     {
-        fprintf(stderr,RED "serialport_init: Couldn't get term attributes\n" NORMAL);
+        if (!quiet) { fprintf(stderr,RED "serialport_init: Couldn't get term attributes\n" NORMAL); }
+        close(fd);
         return -1;
     }
 
@@ -86,7 +121,7 @@ int serialport_init(const char* serialport, int baud, int pico2Mode)
         exit(1);
     }
 
-    fprintf(stderr,"Baudrate set to %u baud\n",baud);
+    if (!quiet) { fprintf(stderr,"Baudrate set to %u baud\n",baud); }
     cfsetispeed(&toptions, brate);
     cfsetospeed(&toptions, brate);
 
@@ -119,13 +154,15 @@ int serialport_init(const char* serialport, int baud, int pico2Mode)
     tcflush(fd, TCIFLUSH);
     if( tcsetattr(fd, TCSANOW, &toptions) < 0)
     {
-        fprintf(stderr,RED "init_serialport: Couldn't set term attributes TCSANOW" NORMAL);
+        if (!quiet) { fprintf(stderr,RED "init_serialport: Couldn't set term attributes TCSANOW" NORMAL); }
+        close(fd);
         return -1;
     }
 
     if( tcsetattr(fd, TCSAFLUSH, &toptions) < 0)
     {
-        fprintf(stderr,RED "init_serialport: Couldn't set term attributes TCSAFLUSH" NORMAL);
+        if (!quiet) { fprintf(stderr,RED "init_serialport: Couldn't set term attributes TCSAFLUSH" NORMAL); }
+        close(fd);
         return -1;
     }
 
@@ -158,7 +195,7 @@ int serialport_init(const char* serialport, int baud, int pico2Mode)
       // asserted); clearing it makes the firmware run but silently drop every
       // Serial.print(), so the host receives zero bytes. Leaving DTR asserted is
       // required here.
-      fprintf(stderr,"Pico2 mode: keeping DTR/RTS asserted so the native USB-CDC will transmit\n");
+      if (!quiet) { fprintf(stderr,"Pico2 mode: keeping DTR/RTS asserted so the native USB-CDC will transmit\n"); }
     }
 
     //usleep(2000000);  // Allow 2 sec Arduino to reset //Removed 30/7/2025 Michele's fix to align timestamps properly
@@ -176,10 +213,86 @@ int serialport_close( int fd )
 
 
 
+/* Reopen only the legacy Nano serial link. Camera and LED timing settings stay as configured. */
+static int arduino_reconnect_legacy_controller(ArduinoSerialConfig *context, int wasConnected)
+{
+    unsigned int attempts = 0;
+    while (*context->keep_running)
+    {
+        int fd = serialport_init(context->reconnectPath,context->baud_rate,0,1);
+        if (fd < 0)
+        {
+            if ((attempts++ % 10)==0)
+                { fprintf(stderr,"Waiting for controller %s: %s\n",context->reconnectPath,strerror(errno)); }
+            sleep(1);
+            continue;
+        }
+
+        // Opening the FTDI port can reset the Nano. Wait for a version reply
+        // before restoring the same i/r commands used at normal startup.
+        char line[128]={0};
+        size_t used = 0;
+        int major = 0, minor = 0, ready = 0;
+        for (int tick=0; tick<150 && *context->keep_running && !ready; tick++)
+        {
+            if ((tick % 10)==0 && write(fd,"v\n",2)!=2) { break; }
+            char response[256];
+            int n = read(fd,response,sizeof(response));
+            if (n<0 && errno!=EINTR && errno!=EAGAIN) { break; }
+            for (int i=0; i<n; i++)
+            {
+                if (response[i]=='\n' || response[i]=='\r')
+                {
+                    line[used]=0;
+                    if (sscanf(line,"V:%d.%d",&major,&minor)==2) { ready=1; }
+                    used=0;
+                }
+                else if (used<sizeof(line)-1) { line[used++]=response[i]; }
+                else { used=0; }
+            }
+            if (!ready) { usleep(100000); }
+        }
+
+        if (ready && write(fd,"i\n",2)==2)
+        {
+            usleep(1000);
+            size_t extraLength = context->extraCommands ? strlen(context->extraCommands) : 0;
+            if ((extraLength==0 || write(fd,context->extraCommands,extraLength)==(ssize_t)extraLength)
+                && write(fd,"0\n",2)==2)
+            {
+                // 'r' selects the round-robin pattern but also enables timed
+                // lights. Keep every COB off until the next captured frame sends
+                // '+'. The Nano firmware retains the pattern across '0'.
+                pthread_mutex_lock(&serialFdMutex);
+                context->serial_fd = fd;
+                context->controllerVersionMajor = major;
+                context->controllerVersionMinor = minor;
+                context->currentLight = -1;
+                context->lastSkipCorrection = -1;
+                context->connectionLost = 0;
+                context->serialReady = 1;
+                if (wasConnected) { context->reconnectCount++; }
+                pthread_mutex_unlock(&serialFdMutex);
+                fprintf(stderr,"Controller %s on %s (firmware v%d.%d); serial commands resumed\n",
+                        wasConnected ? "reconnected" : "ready",context->reconnectPath,major,minor);
+                return 1;
+            }
+        }
+        close(fd);
+        if (*context->keep_running)
+        {
+            fprintf(stderr,"Controller appeared but did not complete startup on %s; retrying\n",
+                    context->reconnectPath);
+            sleep(1);
+        }
+    }
+    return 0;
+}
+
 int arduino_startStream(ArduinoSerialConfig * context)
 {
   int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
-  context->serial_fd = serialport_init(context->port_name,context->baud_rate,pico2Mode);
+  context->serial_fd = serialport_init(context->port_name,context->baud_rate,pico2Mode,0);
 
   //Ask the lighting controller for its version banner first. The reply lands
   //asynchronously in the read loop below and gates every multi-character command
@@ -226,18 +339,50 @@ int arduino_signalNewFrame(ArduinoSerialConfig * context)
     {
      //fprintf(stderr,"Trigger light change to %s \n",context->port_name);
      char buffer[]={"+\n"};
+     pthread_mutex_lock(&serialFdMutex);
+     if (!context->serialReady)
+     {
+       pthread_mutex_unlock(&serialFdMutex);
+       return 0;
+     }
      int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
 
-     if (n<=0)
+     if (n!=(int)(sizeof(buffer)-1))
      {
-       fprintf(stderr,"Sending new frame command to %s failed (%d)\n",context->port_name,n);
+       int saved_errno = errno;
+       fprintf(stderr,"Sending new frame command to %s failed (%d/%zu bytes, %s). Reconnecting serial controller.\n",
+               context->port_name,n,sizeof(buffer)-1,
+               n<0 ? strerror(saved_errno) : "short write");
+       context->connectionLost = 1;
+       context->serialReady = 0;
+       if (!context->autoReconnect) { *context->keep_running = 0; }
+       pthread_mutex_unlock(&serialFdMutex);
        return 0;
      }
 
+     pthread_mutex_unlock(&serialFdMutex);
      return 1;
     }
   }
   return 0;
+}
+
+int arduino_serialReady(ArduinoSerialConfig * context)
+{
+  if (!context) { return 0; }
+  pthread_mutex_lock(&serialFdMutex);
+  int ready = context->serialReady;
+  pthread_mutex_unlock(&serialFdMutex);
+  return ready;
+}
+
+unsigned int arduino_reconnectCount(ArduinoSerialConfig * context)
+{
+  if (!context) { return 0; }
+  pthread_mutex_lock(&serialFdMutex);
+  unsigned int count = context->reconnectCount;
+  pthread_mutex_unlock(&serialFdMutex);
+  return count;
 }
 
 
@@ -304,12 +449,23 @@ int arduino_sendLightSelect(ArduinoSerialConfig * context, int lightIndex)
   //Deliberately no version gate: single-digit light selection predates every other
   //command here and behaves identically on the Nano and on the Pico.
   char buffer[3] = { (char)('1' + lightIndex), '\n', 0 };
-  int n = write(context->serial_fd, buffer, 2);
-  if (n<=0)
+  pthread_mutex_lock(&serialFdMutex);
+  if (!context->serialReady)
   {
-    fprintf(stderr,RED "Failed selecting light %d on %s (%d)\n" NORMAL,lightIndex+1,context->port_name,n);
+    pthread_mutex_unlock(&serialFdMutex);
     return 0;
   }
+  int n = write(context->serial_fd, buffer, 2);
+  if (n!=2)
+  {
+    fprintf(stderr,RED "Failed selecting light %d on %s (%d)\n" NORMAL,lightIndex+1,context->port_name,n);
+    context->connectionLost = 1;
+    context->serialReady = 0;
+    if (!context->autoReconnect) { *context->keep_running = 0; }
+    pthread_mutex_unlock(&serialFdMutex);
+    return 0;
+  }
+  pthread_mutex_unlock(&serialFdMutex);
   return 1;
 }
 
@@ -346,21 +502,31 @@ int arduino_sendLightSchedule(ArduinoSerialConfig * context, const unsigned char
 
 int arduino_stopStream(ArduinoSerialConfig * context)
 {
-    context->running = 1;
+    context->running = 0;
+    pthread_mutex_lock(&serialFdMutex);
+    context->serialReady = 0;
+
+    if (context->serial_fd < 0)
+    {
+        pthread_mutex_unlock(&serialFdMutex);
+        return 0;
+    }
 
     fprintf(stderr,"Arduino stopping stream\n");
 
     char stoplights[]={"0\n"};
     int n = write(context->serial_fd, stoplights, sizeof(stoplights)-1);
-    fprintf(stderr,"Send stop lights command (%u / %lu bytes) to %s \n",n,sizeof(stoplights)-1,context->port_name);
+    fprintf(stderr,"Send stop lights command (%d / %zu bytes) to %s\n",n,sizeof(stoplights)-1,context->port_name);
 
 
     char buffer[]={"f\n"};
     n = write(context->serial_fd, buffer, sizeof(buffer)-1);
     //tcdrain(context->serial_fd);
-    fprintf(stderr,"Send stop command (%u / %lu bytes) to %s \n",n,sizeof(buffer)-1,context->port_name);
+    fprintf(stderr,"Send stop command (%d / %zu bytes) to %s\n",n,sizeof(buffer)-1,context->port_name);
 
     serialport_close(context->serial_fd);
+    context->serial_fd = -1;
+    pthread_mutex_unlock(&serialFdMutex);
     return 0;
 }
 
@@ -713,6 +879,13 @@ void *arduino_thread(void *arg)
     //positional struct initialisers in main() cannot say that.
     config->currentLight       = -1;
     config->lastSkipCorrection = -1;
+    config->serial_fd = -1;
+
+    if (config->autoReconnect)
+    {
+        arduino_find_stable_port(config);
+        fprintf(stderr,"Controller reconnect path: %s\n",config->reconnectPath);
+    }
 
     if (cfg->simulate)
     {
@@ -736,8 +909,16 @@ void *arduino_thread(void *arg)
      memset(buffer,0,sizeof(char) * (BUFFER_SIZE + 1));
      memset(lineBuffer,0,sizeof(char) * (LINE_BUFFER_SIZE + 1));
 
-     if (arduino_startStream(config)==0)
+     int started = config->autoReconnect ? arduino_reconnect_legacy_controller(config,0)
+                                         : (arduino_startStream(config)==0);
+     if (started)
      {
+       if (!config->autoReconnect)
+       {
+           pthread_mutex_lock(&serialFdMutex);
+           config->serialReady = 1;
+           pthread_mutex_unlock(&serialFdMutex);
+       }
 
        if (enabledFileOutput)
        {
@@ -790,17 +971,45 @@ void *arduino_thread(void *arg)
 
 
      unsigned long arduinoStartTime = GetTickCountMicroseconds();
+     unsigned long lastSerialDataTime = arduinoStartTime;
 
 
      while (*config->keep_running)
       {
         config->running = 1;
 
+        if (config->autoReconnect)
+        {
+            pthread_mutex_lock(&serialFdMutex);
+            int lost = config->connectionLost;
+            int oldFd = -1;
+            if (lost)
+            {
+                oldFd = config->serial_fd;
+                config->serial_fd = -1;
+                config->serialReady = 0;
+            }
+            pthread_mutex_unlock(&serialFdMutex);
+            if (lost)
+            {
+                if (oldFd >= 0) { close(oldFd); }
+                fprintf(stderr,"Serial controller disconnected; waiting for the same device to return\n");
+                if (!arduino_reconnect_legacy_controller(config,1)) { break; }
+                lineIndex = 0;
+                lastSerialDataTime = GetTickCountMicroseconds();
+                continue;
+            }
+        }
+
+        pthread_mutex_lock(&serialFdMutex);
         int n = read(config->serial_fd, buffer, BUFFER_SIZE - 1);
+	    int readError = errno;
+        pthread_mutex_unlock(&serialFdMutex);
 	    unsigned long receptionTime = GetTickCountMicroseconds();
 
         if (n > 0)
         {
+        lastSerialDataTime = receptionTime;
         //fprintf(stderr,"%s: Read %d / Buffer at %u / %s\n ",config->csv_name,n,lineIndex,lineBuffer);
         //buffer[n] = 0; // Ensure null-terminated string
         for (int i = 0; i < n; i++)
@@ -868,6 +1077,28 @@ void *arduino_thread(void *arg)
             }
         }
         }
+        else if (n < 0 && readError != EINTR && readError != EAGAIN)
+        {
+          fprintf(stderr,"Serial read from %s failed: %s.\n",
+                  config->port_name,strerror(readError));
+          pthread_mutex_lock(&serialFdMutex);
+          config->connectionLost = 1;
+          config->serialReady = 0;
+          if (!config->autoReconnect) { *config->keep_running = 0; }
+          pthread_mutex_unlock(&serialFdMutex);
+          if (!config->autoReconnect) { break; }
+          continue;
+        }
+        else if (config->autoReconnect && receptionTime-lastSerialDataTime > 3000000UL)
+        {
+          fprintf(stderr,"No controller data for 3 seconds on %s; reopening serial port\n",config->reconnectPath);
+          pthread_mutex_lock(&serialFdMutex);
+          config->connectionLost = 1;
+          config->serialReady = 0;
+          pthread_mutex_unlock(&serialFdMutex);
+          continue;
+        }
+        else if (n==0) { usleep(1000); }
 
         double timeElapsedInSeconds = (double) ((double) (receptionTime-arduinoStartTime)/(double) 1000000.0);
         double computeRate = 0.0;

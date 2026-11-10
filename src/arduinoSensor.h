@@ -50,6 +50,11 @@ typedef struct
     /** COB the last corrective '+' was issued for, so --skipadvance pushes once per
      *  step onto an excluded COB rather than once per reported line. -1 = idle. */
     int lastSkipCorrection;
+    char connectionLost;            /**< Set while serial I/O needs reconnection. */
+    char autoReconnect;             /**< Reconnect the legacy ROS controller after USB re-enumeration. */
+    char serialReady;               /**< Only send frame commands after startup commands succeeded. */
+    char reconnectPath[256];        /**< Stable /dev/serial/by-id path when available. */
+    unsigned int reconnectCount;    /**< Successful reconnects after the first connection. */
 } ArduinoSerialConfig;
 
 /** Does this controller understand the Rev 1.33 multi-character commands (e/E/S)?
@@ -68,6 +73,8 @@ int arduino_probeControllerVersion(ArduinoSerialConfig * context);
 
 
 int arduino_signalNewFrame(ArduinoSerialConfig * context);
+int arduino_serialReady(ArduinoSerialConfig * context);
+unsigned int arduino_reconnectCount(ArduinoSerialConfig * context);
 
 /** Hand light sequencing to the controller ("e"). From this point the controller
  *  advances one schedule entry per camera exposure, in its own ISR, and the host

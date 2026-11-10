@@ -77,6 +77,14 @@ sudo ninja install
 
 All three binaries accept the same command-line parameters described below.
 
+On the Magician ROS rig, the ROS binary defaults to the camera controller's
+`/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A5069RR4-if00-port0` link instead of
+`/dev/ttyUSB0`. The linked Nano controller is reopened after USB re-enumeration;
+the host waits for its firmware version reply before restoring the existing `i`
+and `r` serial commands. `--arduino <path>` overrides this default. The Teensy
+remains a separate device on `/dev/ttyACM0`. The ROS status line adds `/N r/c`
+after the Arduino sample count only after a successful reconnection.
+
 ---
 
 ## Command-Line Options
