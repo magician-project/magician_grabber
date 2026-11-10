@@ -294,11 +294,14 @@ static int arduino_reconnect_legacy_controller(ArduinoSerialConfig *context, int
    boundary, so the receive loop never parses a partial first sample. */
 static int arduino_reconnect_stream(ArduinoSerialConfig *context)
 {
-    int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
+    // A replug is a fresh firmware boot. Clearing DTR is only right for the Nano's
+    // auto-reset bridge: native USB boards see DTR low as "no terminal attached", so
+    // firmware waiting on while(!Serial) would never start. Keep it asserted here.
+    const int keepDTRAsserted = 1;
     unsigned int attempts = 0;
     while (*context->keep_running)
     {
-        int fd = serialport_init(context->reconnectPath,context->baud_rate,pico2Mode,1);
+        int fd = serialport_init(context->reconnectPath,context->baud_rate,keepDTRAsserted,1);
         if (fd < 0)
         {
             if ((attempts++ % 10)==0)
