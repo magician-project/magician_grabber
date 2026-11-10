@@ -9,6 +9,10 @@ extern "C"
 
 #include "common.h"
 
+#define ARDUINO_RECONNECT_OFF        0 /**< A serial failure stops the program. */
+#define ARDUINO_RECONNECT_CONTROLLER 1 /**< Legacy Nano: wait for its version reply, then replay startup commands. */
+#define ARDUINO_RECONNECT_STREAM     2 /**< Teensy: send the start command and wait for a line of data. */
+
 typedef struct
 {
     GlobalConfig* global;           /**< Shared runtime configuration. */
@@ -51,7 +55,7 @@ typedef struct
      *  step onto an excluded COB rather than once per reported line. -1 = idle. */
     int lastSkipCorrection;
     char connectionLost;            /**< Set while serial I/O needs reconnection. */
-    char autoReconnect;             /**< Reconnect the legacy ROS controller after USB re-enumeration. */
+    char autoReconnect;             /**< One of ARDUINO_RECONNECT_*: how to reopen the port after USB re-enumeration. */
     char serialReady;               /**< Only send frame commands after startup commands succeeded. */
     char reconnectPath[256];        /**< Stable /dev/serial/by-id path when available. */
     unsigned int reconnectCount;    /**< Successful reconnects after the first connection. */

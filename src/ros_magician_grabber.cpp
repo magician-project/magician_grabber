@@ -19,6 +19,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <sys/prctl.h>
+#include <sys/wait.h>
 
 //Our modules
 #include "common.h"
@@ -377,6 +380,114 @@ extern "C" int ros_controller_callback(ArduinoSerialConfig *arduino_config,unsig
     return 0;
 }
 
+/* Flash the disconnect picture for three seconds. An override-redirect (POPUP) window is
+   not managed by the desktop, so it cannot take keyboard focus or disturb other windows.
+   X11 is forced because Wayland does not let a client centre its own window; XWayland
+   handles that on Ubuntu 22.04. Uses the system Python since the run script activates a venv. */
+static const char disconnectFlashScript[] =
+    "import sys,gi\n"
+    "gi.require_version('Gtk','3.0')\n"
+    "from gi.repository import Gtk,Gdk,GLib,GdkPixbuf\n"
+    "p=GdkPixbuf.Pixbuf.new_from_file(sys.argv[1])\n"
+    "d=Gdk.Display.get_default()\n"
+    "g=(d.get_primary_monitor() or d.get_monitor(0)).get_geometry()\n"
+    "w=Gtk.Window(type=Gtk.WindowType.POPUP)\n"
+    "w.set_accept_focus(False)\n"
+    "w.set_focus_on_map(False)\n"
+    "w.add(Gtk.Image.new_from_pixbuf(p))\n"
+    "w.move(g.x+(g.width-p.get_width())//2,g.y+(g.height-p.get_height())//2)\n"
+    "w.show_all()\n"
+    "GLib.timeout_add(3000,Gtk.main_quit)\n"
+    "Gtk.main()\n";
+
+/* Only the main status loop touches this, so there is one popup at most however many
+   devices drop, and it is flashed at most once per outage. */
+static pid_t disconnectViewerPid = -1;
+
+static void spawnDisconnectViewer(void)
+{
+    static char warned = 0;
+    if (!getenv("DISPLAY") || access(USB_DISCONNECT_IMAGE,R_OK)!=0)
+    {
+        if (!warned) { fprintf(stderr,"\nCannot show %s (no DISPLAY or missing file)\n",USB_DISCONNECT_IMAGE); }
+        warned = 1;
+        return;
+    }
+
+    pid_t pid = fork();
+    if (pid==0)
+    {
+        // The camera and serial threads are still running in the parent, so only do
+        // minimal work here. Closing inherited fds matters: a child holding the old
+        // serial port open would stop the device from coming back on the same node.
+        prctl(PR_SET_PDEATHSIG,SIGTERM);
+        int devNull = open("/dev/null",O_RDWR);
+        if (devNull>=0) { dup2(devNull,0); dup2(devNull,1); dup2(devNull,2); }
+        for (int fd=3; fd<4096; fd++) { close(fd); }
+
+        execl("/usr/bin/env","env","-u","LD_LIBRARY_PATH","GDK_BACKEND=x11",
+              "/usr/bin/python3","-I","-c",disconnectFlashScript,USB_DISCONNECT_IMAGE,(char*)NULL);
+        _exit(127);
+    }
+    if (pid>0) { disconnectViewerPid = pid; }
+}
+
+static void updateDisconnectViewer(int deviceDown,unsigned long now)
+{
+    if (!SHOW_USB_DISCONNECT_IMAGE) { return; }
+
+    const unsigned long showAfterDownFor = 1000000UL;     // also skips the startup race
+    const unsigned long minTimeBetweenFlashes = 30000000UL; // a flapping cable must not flash repeatedly
+    const unsigned long maxPopupLifetime = 5000000UL;     // the popup closes itself; this is a backstop
+    static unsigned long downSince = 0, lastFlash = 0;
+    static char shownThisOutage = 0, warned = 0;
+
+    if (disconnectViewerPid>0)
+    {
+        int status = 0;
+        if (waitpid(disconnectViewerPid,&status,WNOHANG)==disconnectViewerPid)
+        {
+            if (WIFEXITED(status) && WEXITSTATUS(status)!=0 && !warned)
+            {
+                fprintf(stderr,"\nCould not flash the disconnect picture (needs python3-gi and gir1.2-gtk-3.0)\n");
+                warned = 1;
+            }
+            disconnectViewerPid = -1;
+        }
+        else if (now-lastFlash>maxPopupLifetime) { kill(disconnectViewerPid,SIGKILL); }
+    }
+
+    if (!deviceDown)
+    {
+        downSince = 0;
+        shownThisOutage = 0;
+        return;
+    }
+
+    if (downSince==0) { downSince = now; }
+    if (!shownThisOutage && disconnectViewerPid<0 && now-downSince>=showAfterDownFor
+        && (lastFlash==0 || now-lastFlash>=minTimeBetweenFlashes))
+    {
+        shownThisOutage = 1;
+        lastFlash = now;
+        spawnDisconnectViewer();
+    }
+}
+
+static void closeDisconnectViewer(void)
+{
+    if (disconnectViewerPid<=0) { return; }
+    kill(disconnectViewerPid,SIGTERM);
+    for (int i=0; i<20; i++)
+    {
+        if (waitpid(disconnectViewerPid,NULL,WNOHANG)==disconnectViewerPid) { disconnectViewerPid = -1; return; }
+        usleep(10000);
+    }
+    kill(disconnectViewerPid,SIGKILL);
+    waitpid(disconnectViewerPid,NULL,0);
+    disconnectViewerPid = -1;
+}
+
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
@@ -489,7 +600,10 @@ int main(int argc, char **argv)
     ArduinoSerialConfig arduino_config = {&cfg, "copy from cfg later", "controller.csv", 115200, NULL, &cfg.keep_running, 0, arduinoExtraCommand, 0, 0, 0.0, (void*) ros_controller_callback};
     // This firmware uses the legacy single-byte light commands. Reopen its FTDI
     // serial port after USB re-enumeration without touching camera acquisition.
-    arduino_config.autoReconnect = cfg.useArduino && cfg.manual_trigger_light && !cfg.isPico2 && !cfg.exposure_locked_light && !cfg.simulate;
+    if (cfg.useArduino && cfg.manual_trigger_light && !cfg.isPico2 && !cfg.exposure_locked_light && !cfg.simulate)
+        { arduino_config.autoReconnect = ARDUINO_RECONNECT_CONTROLLER; }
+    if (cfg.useTeensy && !cfg.simulate)
+        { teensy_config.autoReconnect = ARDUINO_RECONNECT_STREAM; }
 
 
     //Copy teensy/arduino port
@@ -691,11 +805,20 @@ int main(int argc, char **argv)
             unsigned int reconnects = arduino_reconnectCount(&arduino_config);
             if (reconnects>0) { printf("/%u r/c",reconnects); }
         }
-        if (cfg.useTeensy)   { printf("|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames ); }
+        if (cfg.useTeensy)
+        {
+            printf("|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames );
+            unsigned int reconnects = arduino_reconnectCount(&teensy_config);
+            if (reconnects>0) { printf("/%u r/c",reconnects); }
+        }
         if (cfg.useATIForce) { printf("|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
         //-----------------------------------------------------------------------------------------------------------------
         printf("|          \r");
         fflush(stdout);
+
+        updateDisconnectViewer( (arduino_config.autoReconnect && !arduino_serialReady(&arduino_config)) ||
+                                (teensy_config.autoReconnect  && !arduino_serialReady(&teensy_config)),
+                                currentTime );
 
 
 
@@ -706,6 +829,8 @@ int main(int argc, char **argv)
           usleep(10000);
         }
     }
+
+    closeDisconnectViewer();
 
     //Restore terminal to its former state
     if (cfg.interceptKeyboard)

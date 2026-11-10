@@ -289,6 +289,61 @@ static int arduino_reconnect_legacy_controller(ArduinoSerialConfig *context, int
     return 0;
 }
 
+/* Reopen a streaming sensor (Teensy). It has no version protocol, so a complete line
+   of data is the proof of life. Reads one byte at a time to stop exactly on a line
+   boundary, so the receive loop never parses a partial first sample. */
+static int arduino_reconnect_stream(ArduinoSerialConfig *context)
+{
+    int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
+    unsigned int attempts = 0;
+    while (*context->keep_running)
+    {
+        int fd = serialport_init(context->reconnectPath,context->baud_rate,pico2Mode,1);
+        if (fd < 0)
+        {
+            if ((attempts++ % 10)==0)
+                { fprintf(stderr,"Waiting for sensor %s: %s\n",context->reconnectPath,strerror(errno)); }
+            sleep(1);
+            continue;
+        }
+
+        int ready = 0, receivedAnything = 0;
+        for (int tick=0; tick<5000 && *context->keep_running && !ready; tick++)
+        {
+            // Repeat the start command only while the device is silent.
+            if (!receivedAnything && (tick % 1000)==0 && write(fd,"i\n",2)!=2) { break; }
+            char c;
+            int n = read(fd,&c,1);
+            if (n<0 && errno!=EINTR && errno!=EAGAIN) { break; }
+            if (n==1)
+            {
+                receivedAnything = 1;
+                if (c=='\n') { ready = 1; }
+            }
+            else { usleep(1000); }
+        }
+
+        if (ready)
+        {
+            pthread_mutex_lock(&serialFdMutex);
+            context->serial_fd = fd;
+            context->connectionLost = 0;
+            context->serialReady = 1;
+            context->reconnectCount++;
+            pthread_mutex_unlock(&serialFdMutex);
+            fprintf(stderr,"Sensor reconnected on %s; streaming resumed\n",context->reconnectPath);
+            return 1;
+        }
+        close(fd);
+        if (*context->keep_running)
+        {
+            fprintf(stderr,"Sensor appeared but sent no data on %s; retrying\n",context->reconnectPath);
+            sleep(1);
+        }
+    }
+    return 0;
+}
+
 int arduino_startStream(ArduinoSerialConfig * context)
 {
   int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
@@ -884,7 +939,7 @@ void *arduino_thread(void *arg)
     if (config->autoReconnect)
     {
         arduino_find_stable_port(config);
-        fprintf(stderr,"Controller reconnect path: %s\n",config->reconnectPath);
+        fprintf(stderr,"Serial reconnect path: %s\n",config->reconnectPath);
     }
 
     if (cfg->simulate)
@@ -909,11 +964,12 @@ void *arduino_thread(void *arg)
      memset(buffer,0,sizeof(char) * (BUFFER_SIZE + 1));
      memset(lineBuffer,0,sizeof(char) * (LINE_BUFFER_SIZE + 1));
 
-     int started = config->autoReconnect ? arduino_reconnect_legacy_controller(config,0)
-                                         : (arduino_startStream(config)==0);
+     int waitsForController = (config->autoReconnect==ARDUINO_RECONNECT_CONTROLLER);
+     int started = waitsForController ? arduino_reconnect_legacy_controller(config,0)
+                                      : (arduino_startStream(config)==0);
      if (started)
      {
-       if (!config->autoReconnect)
+       if (!waitsForController)
        {
            pthread_mutex_lock(&serialFdMutex);
            config->serialReady = 1;
@@ -993,8 +1049,10 @@ void *arduino_thread(void *arg)
             if (lost)
             {
                 if (oldFd >= 0) { close(oldFd); }
-                fprintf(stderr,"Serial controller disconnected; waiting for the same device to return\n");
-                if (!arduino_reconnect_legacy_controller(config,1)) { break; }
+                fprintf(stderr,"Serial device %s disconnected; waiting for the same device to return\n",config->reconnectPath);
+                int reconnected = waitsForController ? arduino_reconnect_legacy_controller(config,1)
+                                                     : arduino_reconnect_stream(config);
+                if (!reconnected) { break; }
                 lineIndex = 0;
                 lastSerialDataTime = GetTickCountMicroseconds();
                 continue;
@@ -1098,7 +1156,8 @@ void *arduino_thread(void *arg)
           pthread_mutex_unlock(&serialFdMutex);
           continue;
         }
-        else if (n==0) { usleep(1000); }
+        // Only the Nano sleeps: a sleep here delays receptionTime, and sensor timestamps need it tight.
+        else if (n==0 && waitsForController) { usleep(1000); }
 
         double timeElapsedInSeconds = (double) ((double) (receptionTime-arduinoStartTime)/(double) 1000000.0);
         double computeRate = 0.0;

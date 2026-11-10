@@ -37,6 +37,10 @@ extern "C"
 #include "colors.h"
 #include "performance.h"
 
+#ifndef SHOW_USB_DISCONNECT_IMAGE
+#define SHOW_USB_DISCONNECT_IMAGE 1  /**< Set to 0 to stop the ROS grabber flashing doc/usb_dc.jpg when a serial device drops. */
+#endif
+
 #define MAXIMUM_ALLOWED_EXPOSURE_IN_MICROSECONDS 750  /**< Soft cap on exposure time in µs; requires --I_know_what_I_am_doing to exceed. */
 
 #define TACTILE_STREAMING_WINDOW   4000  /**< Number of time-steps retained in the tactile ring buffer per flush cycle. */
