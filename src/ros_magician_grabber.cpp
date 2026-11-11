@@ -26,6 +26,17 @@
 
 //Our modules
 #include "common.h"
+
+//Sensors sample very fast, so print sample counts as K / M once they grow past 1000 / 1000000
+//(999995 so it never prints 1000.00K)
+static void printSampleCount(unsigned long count)
+{
+  double samples = (double) count;
+  const char * unit = "";
+  if (samples >= 999995.0) { samples /= 1000000.0; unit = "M"; } else
+  if (samples >= 1000.0)   { samples /= 1000.0;    unit = "K"; }
+  printf("%0.*f%s samples", (unit[0]) ? 2 : 0, samples, unit);
+}
 #include "arduinoSensor.h"
 #include "atiForceSensor.h"
 #include "gigeCameraSensor.h"
@@ -887,17 +898,17 @@ int main(int argc, char **argv)
 
         if (cfg.useArduino)
         {
-            printf("|Arduino %0.2fHz/%lu samples",arduino_config.Hz,arduino_config.receivedDataFrames);
+            printf("|Arduino %0.2fHz/",arduino_config.Hz); printSampleCount(arduino_config.receivedDataFrames);
             unsigned int reconnects = arduino_reconnectCount(&arduino_config);
             if (reconnects>0) { printf("/%u r/c",reconnects); }
         }
         if (cfg.useTeensy)
         {
-            printf("|Teensy %0.2fHz/%lu samples",teensy_config.Hz, teensy_config.receivedDataFrames );
+            printf("|Teensy %0.2fHz/",teensy_config.Hz); printSampleCount(teensy_config.receivedDataFrames);
             unsigned int reconnects = arduino_reconnectCount(&teensy_config);
             if (reconnects>0) { printf("/%u r/c",reconnects); }
         }
-        if (cfg.useATIForce) { printf("|ATI %0.2fHz/%lu samples",atinetft_config.Hz, atinetft_config.receivedDataFrames); }
+        if (cfg.useATIForce) { printf("|ATI %0.2fHz/",atinetft_config.Hz); printSampleCount(atinetft_config.receivedDataFrames); }
         //-----------------------------------------------------------------------------------------------------------------
         printf("|          \r");
         fflush(stdout);
