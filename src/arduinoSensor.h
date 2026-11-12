@@ -70,6 +70,16 @@ typedef struct
  *  be ignored. Never send e/E/S unless this returns 1. */
 int arduino_controllerSupportsExposureLock(const ArduinoSerialConfig * context);
 
+/** Does the controller understand "N<n>" (consecutive-activation limit)? Firmware >= 2.2 only. */
+int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context);
+
+/** Send "N<n>": the controller never fires the same COB on more than n exposures in a row.
+ *  When the limit is hit it fires the next different COB of its schedule instead, or leaves
+ *  the exposure dark if the schedule holds no other COB. 0 or anything above
+ *  LIGHT_MAX_CONSECUTIVE_ACTIVATIONS is sent as LIGHT_MAX_CONSECUTIVE_ACTIVATIONS.
+ *  @return 1 if the command was written, 0 otherwise (including unsupported firmware). */
+int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations);
+
 /** Ask the controller for its version banner ("v"). The reply is parsed
  *  asynchronously by the serial thread into controllerVersion{Major,Minor}. */
 int arduino_probeControllerVersion(ArduinoSerialConfig * context);

@@ -62,6 +62,10 @@ static char arduinoUsePatternLight[]  = {"t\n"};
  *  the controller enforces its own copy and never trusts this one. Keep in sync. */
 #define LIGHT_ON_CEILING_CONTROLLER_HARD_MAX 1000
 
+/* Mirrors MAX_CONSECUTIVE_ACTIVATIONS_OF_LIGHT in the Pico 2 firmware (hardware_config.h):
+ * the most exposures in a row one COB may fire. The firmware clamps 'N' to this anyway. */
+#define LIGHT_MAX_CONSECUTIVE_ACTIVATIONS 12
+
 /** COBs wired to the controller board. They are 0-indexed internally and 1-indexed
  *  everywhere the user can see them, matching the "1".."6" wire protocol. Mirror of
  *  NUMBER_OF_LIGHTS in the firmware. */
@@ -90,6 +94,7 @@ typedef struct
     int  polarizationDwell;    /**< Consecutive frames each COB is held per cycle; 0 = default. */
 
     unsigned char lightSkipMask; /**< Bit i set = COB i+1 excluded by --skip. Such a COB is never scheduled, never selected and never scored. 0 = use them all. */
+    unsigned int maxConsecutiveActivations; /**< --maxrepeat: sent as 'N<n>' to firmware >= 2.2. 0 = leave the firmware default (12). */
     char skipByAdvancing;        /**< When 1, skip by pushing the controller past an excluded COB with an extra '+' rather than by naming the COB we want. Keeps a firmware-owned pattern intact; see --skipadvance. */
     char firmwareOwnedLightOrder;/**< When 1, the ORDER of the COBs is decided on the controller and cannot be reproduced host-side (--dlight, --tlight), so --skip must veto rather than dictate. Round-robin is not marked: naming COBs in ascending order reproduces it exactly. */
 
@@ -489,6 +494,9 @@ static void print_help()
     printf("  --skipadvance             Skip by sending an extra '+' when the controller reports an\n");
     printf("                            excluded light, instead of naming the light to use. Keeps a\n");
     printf("                            firmware-owned pattern (--rlight/--tlight/--dlight) intact.\n");
+    printf("  --maxrepeat <n>           Never fire the same light on more than n exposures in a row\n");
+    printf("                            (1..%d, firmware >= 2.2). The controller fires another light,\n",LIGHT_MAX_CONSECUTIVE_ACTIVATIONS);
+    printf("                            or none if --skip leaves only one; see ForcedAdvances/Starved.\n");
     printf("  --polstride <n>           Polarization subsampling stride (default 8; 1 = every superpixel).\n");
     printf("  --poldwell <n>            Frames each light is held per cycle (default 3).\n");
     printf("  --dlight                  Use lighting based on distance sensor.\n");
@@ -786,6 +794,23 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         {
             cfg->skipByAdvancing = 1;
             fprintf(stderr,"Skipped lights will be stepped over rather than bypassed by name\n");
+        }
+        else if (strcmp(argv[i],"--maxrepeat")==0)
+        {
+            if (argc>i+1)
+            {
+              int n = atoi(argv[i+1]);
+              if (n<1) { n = 1; }
+              if (n>LIGHT_MAX_CONSECUTIVE_ACTIVATIONS)
+              {
+                fprintf(stderr,YELLOW "--maxrepeat: %d is above the firmware limit, using %d\n" NORMAL,n,LIGHT_MAX_CONSECUTIVE_ACTIVATIONS);
+                n = LIGHT_MAX_CONSECUTIVE_ACTIVATIONS;
+              }
+              cfg->maxConsecutiveActivations = (unsigned int) n;
+              fprintf(stderr,"The same light will fire at most %d exposures in a row\n",n);
+            }
+            else
+            { fprintf(stderr,"Failed setting --maxrepeat, not enough arguments! \n"); }
         }
         else if (strcmp(argv[i],"--polstride")==0)
         {

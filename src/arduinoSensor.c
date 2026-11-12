@@ -447,9 +447,43 @@ unsigned int arduino_reconnectCount(ArduinoSerialConfig * context)
 int arduino_controllerSupportsExposureLock(const ArduinoSerialConfig * context)
 {
   if (context==0) { return 0; }
-  if (context->controllerVersionMajor > 1)  { return 1; }
-  if (context->controllerVersionMajor == 1) { return (context->controllerVersionMinor >= 33); }
+  int major = context->controllerVersionMajor;
+  int minor = context->controllerVersionMinor;
+  if (major > 2)  { return 1; }
+  //Pico 2 firmware 2.0 and 2.1 do NOT understand e/E/S: they would run the digits of
+  //"E750" or "S0123" as light selections. 2.2 is the first 2.x that does.
+  if (major == 2) { return (minor >= 2); }
+  if (major == 1) { return (minor >= 33); }
   return 0; //no banner seen -> assume legacy and stay on the '+' path
+}
+
+int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context)
+{
+  if (context==0) { return 0; }
+  if (context->controllerVersionMajor > 2)  { return 1; }
+  if (context->controllerVersionMajor == 2) { return (context->controllerVersionMinor >= 2); }
+  return 0; //the 1.x Nano/Pico firmware has no 'N' command
+}
+
+int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations)
+{
+  if (context==0)                 { return 0; }
+  if (!context->global->useArduino) { return 0; }
+  if (!arduino_controllerSupportsRepeatLimit(context)) { return 0; }
+
+  if (activations==0)                                   { activations = LIGHT_MAX_CONSECUTIVE_ACTIVATIONS; }
+  if (activations>LIGHT_MAX_CONSECUTIVE_ACTIVATIONS)    { activations = LIGHT_MAX_CONSECUTIVE_ACTIVATIONS; }
+
+  char buffer[32]={0};
+  int len = snprintf(buffer,sizeof(buffer),"N%u\n",activations);
+  int n = write(context->serial_fd, buffer, len);
+  if (n<=0)
+  {
+    fprintf(stderr,RED "Failed setting the consecutive-activation limit (%d)\n" NORMAL,n);
+    return 0;
+  }
+  fprintf(stderr,"Controller will fire the same light at most %u exposures in a row\n",activations);
+  return 1;
 }
 
 int arduino_probeControllerVersion(ArduinoSerialConfig * context)
@@ -830,7 +864,11 @@ static void arduino_write_controller_csv_header(ArduinoSerialConfig *config, con
     {
         //Rev 1.33+ ground truth. StrobeLight is the COB that ACTUALLY fired, which
         //may differ from Light1..6 when the controller substituted a cooler COB.
-        fprintf(config->csv_file,",StrobeCounter,StrobeLight,Substitutions,Starved,WatchdogTrips");
+        //Firmware 2.2+ has no thermal substitution; that column counts the exposures
+        //where the 'N' consecutive-activation limit made it fire a different COB.
+        if (config->controllerVersionMajor >= 2)
+          { fprintf(config->csv_file,",StrobeCounter,StrobeLight,ForcedAdvances,Starved,WatchdogTrips"); } else
+          { fprintf(config->csv_file,",StrobeCounter,StrobeLight,Substitutions,Starved,WatchdogTrips"); }
         named = 17;
     }
 

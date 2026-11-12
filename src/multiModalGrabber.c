@@ -433,6 +433,26 @@ int main (int argc, char **argv)
              { arduino_setLightOnCeiling(&arduino_config,requestedCeiling); }
         }
 
+        //Consecutive-activation limit ('N', firmware >= 2.2). The firmware already
+        //defaults to its hard maximum, so only send it when the user asked for less.
+        if (cfg.maxConsecutiveActivations!=0)
+        {
+          if (!arduino_setMaxConsecutiveActivations(&arduino_config,cfg.maxConsecutiveActivations))
+             { fprintf(stderr,YELLOW "--maxrepeat needs controller firmware >= 2.2; ignoring it\n" NORMAL); }
+        }
+
+        //When the 'N' limit swaps in another COB, the firmware picks it from its schedule.
+        //Upload the --skip list on the per-frame paths too, so a substitute is never an
+        //excluded COB. (The exposure-locked path uploads it below.)
+        if ( (cfg.lightSkipMask!=0) && (!cfg.exposure_locked_light) && (!cfg.polarizationLights) &&
+             arduino_controllerSupportsRepeatLimit(&arduino_config) )
+        {
+          unsigned char allowed[LIGHTS_ON_CONTROLLER]={0};
+          int allowedLen = lightBuildAllowedList(&cfg,allowed,LIGHTS_ON_CONTROLLER);
+          if (allowedLen>0)
+             { arduino_sendLightSchedule(&arduino_config,allowed,allowedLen); }
+        }
+
         if (modernController && cfg.exposure_locked_light)
         {
           arduino_enterExposureLockedMode(&arduino_config);

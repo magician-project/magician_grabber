@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # gopro-webcam: expose a USB-connected GoPro as a V4L2 webcam while this runs.
 # Ctrl+C stops the camera and undoes the module and firewall changes it made.
-# Part of the grabber, because it is a grabber of sorts :P 
 
 set -u
 
 RES=1080
 FOV=wide
 VIDEO_NR=42
+FLIP=0
 PORT=8554
 GOPRO_USB_VENDOR=2672
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [--res 1080|720|480] [--fov wide|narrow|superview|linear] [--device N]
+Usage: $(basename "$0") [--res 1080|720|480] [--fov wide|narrow|superview|linear] [--device N] [--flip]
+
+  --flip    mirror the image horizontally
 
 Options default to --res $RES --fov $FOV --device $VIDEO_NR (/dev/video$VIDEO_NR).
 EOF
@@ -27,6 +29,7 @@ while [ $# -gt 0 ]; do
         --res) RES="${2:-}"; shift 2 || die "--res needs a value" ;;
         --fov) FOV="${2:-}"; shift 2 || die "--fov needs a value" ;;
         --device) VIDEO_NR="${2:-}"; shift 2 || die "--device needs a value" ;;
+        --flip) FLIP=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; exit 2 ;;
     esac
@@ -43,6 +46,8 @@ esac
 [[ "$VIDEO_NR" =~ ^[0-9]+$ ]] || die "--device must be a number"
 
 DEVICE="/dev/video$VIDEO_NR"
+VF=format=yuv420p
+[ "$FLIP" = 1 ] && VF="hflip,$VF"
 IFACE=""
 CAM=""
 FFMPEG_PID=""
@@ -156,7 +161,7 @@ while true; do
     ffmpeg -nostdin -hide_banner -loglevel error \
         -fflags nobuffer -flags low_delay \
         -i "udp://@0.0.0.0:$PORT?overrun_nonfatal=1&fifo_size=50000000&timeout=10000000" \
-        -an -vf format=yuv420p -f v4l2 "$DEVICE" &
+        -an -vf "$VF" -f v4l2 "$DEVICE" &
     FFMPEG_PID=$!
     log "Running. Select \"GoPro\" ($DEVICE) in your app. Press Ctrl+C to stop."
 
