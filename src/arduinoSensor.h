@@ -81,6 +81,11 @@ int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context);
  *  @return 1 if the command was written, 0 otherwise (including unsupported firmware). */
 int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations);
 
+/** Send "p" (firmware >= 2.2). The one-line "P:..." reply is logged by the receive thread,
+ *  with a warning when the camera power rail (11.5 V) reads as off. Never written to CSV.
+ *  @return 1 if the query was written. */
+int arduino_queryPowerRails(ArduinoSerialConfig * context);
+
 /** Ask the controller for its version banner ("v"). The reply is parsed
  *  asynchronously by the serial thread into controllerVersion{Major,Minor}. */
 int arduino_probeControllerVersion(ArduinoSerialConfig * context);

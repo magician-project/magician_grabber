@@ -445,6 +445,7 @@ int main (int argc, char **argv)
         int stateful22 = arduino_controllerSupportsRepeatLimit(&arduino_config);
         if (stateful22)
         {
+          arduino_queryPowerRails(&arduino_config); //log rail state; warns if the camera is unpowered
           arduino_setMaxConsecutiveActivations(&arduino_config,cfg.maxConsecutiveActivations);
           if (!cfg.polarizationLights)
           {

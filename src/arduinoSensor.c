@@ -548,6 +548,17 @@ int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context)
   return 0; //the 1.x Nano/Pico firmware has no 'N' command
 }
 
+int arduino_queryPowerRails(ArduinoSerialConfig * context)
+{
+  if (context==0)                 { return 0; }
+  if (!context->global->useArduino) { return 0; }
+  if (!arduino_controllerSupportsRepeatLimit(context)) { return 0; } //'p' arrived with 2.2
+
+  char buffer[]={"p\n"};
+  int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
+  return (n==(int)(sizeof(buffer)-1));
+}
+
 int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations)
 {
   if (context==0)                 { return 0; }
@@ -1216,6 +1227,19 @@ void *arduino_thread(void *arg)
                    //Route to distances.csv, reusing the timestamp of the most recent controller
                    //frame so both files stay timestamp-aligned. controller.csv is left untouched.
                    process_distance_zone_data(config,enabledFileOutput,lastFrameTimestamp,lineBuffer,lineIndex);
+                 } else
+                 if ( (lineBuffer[0]=='P') && (lineBuffer[1]==':') )
+                 {
+                   //Power-rail report ("P:11V=c/r,5V=c/r,...", reply to 'p', firmware >= 2.2).
+                   //Not CSV data. c = commanded, r = enable-pin readback on the board.
+                   char c11='?', r11='?';
+                   int parsed = (sscanf(lineBuffer,"P:11V=%c/%c",&c11,&r11)==2);
+                   if (parsed && (r11=='0'))
+                     { fprintf(stderr,YELLOW "Controller on %s: CAMERA POWER RAIL IS OFF (%s)\n" NORMAL,config->port_name,lineBuffer); }
+                   else if (parsed && (c11!=r11))
+                     { fprintf(stderr,YELLOW "Controller on %s: camera rail readback differs from command (%s)\n" NORMAL,config->port_name,lineBuffer); }
+                   else
+                     { fprintf(stderr,"Controller on %s power: %s\n",config->port_name,lineBuffer); }
                  } else
                  if (lineBuffer[0]=='V')
                  {
