@@ -48,7 +48,7 @@ add_executable(magician_grabber ${SRC} ) #${TACTILE_SRC}
 
 
 target_include_directories(magician_grabber PRIVATE ${ARAVIS_INCLUDE_DIRS})
-target_compile_definitions(magician_grabber PRIVATE USB_DISCONNECT_IMAGE="${CMAKE_CURRENT_SOURCE_DIR}/doc/usb_dc.jpg" CAMERA_DISCONNECT_IMAGE="${CMAKE_CURRENT_SOURCE_DIR}/doc/camera_dc.jpg")
+target_compile_definitions(magician_grabber PRIVATE USB_DISCONNECT_IMAGE="${CMAKE_CURRENT_SOURCE_DIR}/doc/usb_dc.jpg" CAMERA_DISCONNECT_IMAGE="${CMAKE_CURRENT_SOURCE_DIR}/doc/camera_dc.jpg" ETH_DISCONNECT_IMAGE="${CMAKE_CURRENT_SOURCE_DIR}/doc/eth_dc.jpg")
 
 if("$ENV{ROS_DISTRO}" STREQUAL "humble")
   ament_target_dependencies(magician_grabber rclcpp std_msgs geometry_msgs)

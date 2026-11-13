@@ -465,6 +465,8 @@ static void print_help()
     printf("  --controller-ip <ip[:port]> Reach the Pico 2 controller over Ethernet instead of USB\n");
     printf("                            (e.g. 192.168.137.64, default port %d). Same commands and CSV.\n",CONTROLLER_DEFAULT_TCP_PORT);
     printf("  --arduino-ip <ip[:port]>  Same as --controller-ip.\n");
+    printf("  --ethernet                (ROS node only) Controller over Ethernet at 192.168.137.64:23 with the\n");
+    printf("                            firmware-2.2 setup (E/N/S); without it the ROS node keeps the serial path.\n");
     printf("  --teensy <path>           Set the path to teensy (def. /dev/ttyACM1).\n");
     printf("  --nooutput                Disable file output (redirect to /dev/null).\n");
     printf("  --countdown <seconds>     Perform a countdown before starting.\n");

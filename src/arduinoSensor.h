@@ -94,6 +94,10 @@ int arduino_controllerSupportsExposureLock(const ArduinoSerialConfig * context);
 /** Does the controller understand "N<n>" (consecutive-activation limit)? Firmware >= 2.2 only. */
 int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context);
 
+/** Called (if set) just before the grabber exits because the Ethernet controller could not
+    be reached at startup. The ROS node uses it to show doc/eth_dc.jpg. */
+extern void (*arduino_onNetworkConnectFailure)(void);
+
 /** Send "N<n>": the controller never fires the same COB on more than n exposures in a row.
  *  When the limit is hit it fires the next different COB of its schedule instead, or leaves
  *  the exposure dark if the schedule holds no other COB. 0 removes the limit (the

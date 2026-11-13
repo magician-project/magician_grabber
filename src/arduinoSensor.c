@@ -223,6 +223,8 @@ int serialport_close( int fd )
  * so the receive loop polls it exactly as it polls the serial fd. The one difference is
  * that read() returning 0 means the board closed the connection (see arduino_thread).
  * @return socket fd, or -1 on failure. */
+void (*arduino_onNetworkConnectFailure)(void) = 0;
+
 static int controller_tcp_connect(const char *host, int port, int timeoutMs)
 {
     char portText[16];
@@ -427,7 +429,11 @@ int arduino_startStream(ArduinoSerialConfig * context)
     int port = context->global->controllerPort ? context->global->controllerPort : CONTROLLER_DEFAULT_TCP_PORT;
     snprintf(context->port_name,sizeof(context->port_name),"tcp://%s:%d",context->global->controllerHost,port);
     context->serial_fd = controller_tcp_connect(context->global->controllerHost,port,3000);
-    if (context->serial_fd<0) { exit(1); }
+    if (context->serial_fd<0)
+    {
+      if (arduino_onNetworkConnectFailure) { arduino_onNetworkConnectFailure(); } //e.g. ROS node flashes doc/eth_dc.jpg
+      exit(1);
+    }
     context->isNetwork = 1;
     fprintf(stderr,GREEN "Connected to controller at %s\n" NORMAL,context->port_name);
   } else

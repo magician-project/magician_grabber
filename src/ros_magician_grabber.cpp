@@ -52,6 +52,12 @@ static void printSampleCount(unsigned long count)
 
 static const char MagicianROSGrabberVersion[]="0.0.1";
 
+//Address used by --ethernet: the Pico 2 firmware's static IP (src/pico2 in magician_main_board).
+#define ROS_CONTROLLER_DEFAULT_IP "192.168.137.64"
+#ifndef ETH_DISCONNECT_IMAGE
+#define ETH_DISCONNECT_IMAGE USB_DISCONNECT_IMAGE
+#endif
+
 volatile sig_atomic_t stop = 0;
 
 void handle_sigint(int sig)
@@ -466,6 +472,7 @@ static void showStartupFailureImage(const char *image)
 }
 
 static void cameraStartupFailed(void) { showStartupFailureImage(CAMERA_DISCONNECT_IMAGE); }
+static void ethernetStartupFailed(void) { showStartupFailureImage(ETH_DISCONNECT_IMAGE); }
 
 static void exitIfSerialDeviceMissing(const char *name,const char *path)
 {
@@ -624,7 +631,23 @@ int main(int argc, char **argv)
     //  See common.h -> parse_arguments() or run with --help
     //                 for all available options
     //=============================================================
+    //--ethernet (ROS node only): reach the Pico 2 controller over its W5500 port at the
+    //default address and use the firmware-2.2 setup (E/N/S/p, --exposure-locked).
+    //--controller-ip <ip[:port]> picks another address and implies --ethernet.
+    //Without either, the controller path is unchanged (serial, no extra setup).
+    for (int a=1; a<argc; a++)
+    {
+        if (strcmp(argv[a],"--ethernet")==0)
+        {
+            snprintf(cfg.controllerHost,sizeof(cfg.controllerHost),"%s",ROS_CONTROLLER_DEFAULT_IP);
+            cfg.controllerPort = CONTROLLER_DEFAULT_TCP_PORT;
+            cfg.useArduino     = 1;
+            cfg.isPico2        = 1;
+            fprintf(stderr,"--ethernet: controller at %s:%d\n",cfg.controllerHost,cfg.controllerPort);
+        }
+    }
     parse_arguments(&cfg,argc,argv);
+    const int ethernetController = (cfg.useArduino && cfg.controllerHost[0]!=0);
     //=============================================================
     //=============================================================
 
@@ -672,7 +695,8 @@ int main(int argc, char **argv)
     //Copy teensy/arduino port
     snprintf(teensy_config.port_name,128,"%s",cfg.teensyPath);
     snprintf(arduino_config.port_name,128,"%s",cfg.arduinoPath);
-    fprintf(stderr,"Arduino : %s \n",arduino_config.port_name);
+    if (cfg.controllerHost[0]!=0) { fprintf(stderr,"Controller : %s:%u (Ethernet)\n",cfg.controllerHost,cfg.controllerPort); }
+    else                          { fprintf(stderr,"Arduino : %s \n",arduino_config.port_name); }
     if (cfg.useTeensy) { fprintf(stderr,"Teensy : %s \n",teensy_config.port_name); }
 
     //Copy ATI IP/port from cfg
@@ -685,7 +709,8 @@ int main(int argc, char **argv)
     //A sensor missing at startup is fatal, reconnecting is only for sensors that were working.
     if (!cfg.simulate)
     {
-        if (cfg.useArduino) { exitIfSerialDeviceMissing("Controller",arduino_config.port_name); }
+        //Over Ethernet (--controller-ip) there is no serial device to check; the TCP connect reports failures.
+        if (cfg.useArduino && cfg.controllerHost[0]==0) { exitIfSerialDeviceMissing("Controller",arduino_config.port_name); }
         if (cfg.useTeensy)  { exitIfSerialDeviceMissing("Teensy",teensy_config.port_name); }
     }
 
@@ -755,6 +780,7 @@ int main(int argc, char **argv)
     int captureFailure = 0;
     if (cfg.useArduino)
     {
+        if (ethernetController) { arduino_onNetworkConnectFailure = ethernetStartupFailed; }
         pthread_create(&arduino_tid,NULL,arduino_thread,&arduino_config);
         if (arduino_config.autoReconnect)
         {
@@ -772,6 +798,53 @@ int main(int argc, char **argv)
             }
         }
     }
+    //Ethernet mode only (--ethernet / --controller-ip): Pico 2 light setup, as in multiModalGrabber.c. Firmware >= 1.33 takes 'E' and 'e';
+    //2.2 keeps 'N' and 'S' in RAM across runs, so both are stated explicitly every time.
+    if (ethernetController && cfg.keep_running && !captureFailure)
+    {
+        unsigned int waited = 0;
+        unsigned int maxWait = (cfg.controllerHost[0]!=0) ? 500 : 200; //x 10 ms (Ethernet also waits for the TCP connect)
+        while ( (arduino_config.controllerVersionMajor==0) && (waited<maxWait) && cfg.keep_running && !stop )
+             { usleep(10000); waited++; }
+
+        if (arduino_config.controllerVersionMajor==0)
+        {
+            fprintf(stderr,RED "Controller did not report its firmware version\n" NORMAL);
+            if (!stop) { showStartupFailureImage(ETH_DISCONNECT_IMAGE); }
+            captureFailure = 1;
+            cfg.keep_running = 0;
+        }
+        else if (arduino_controllerSupportsExposureLock(&arduino_config))
+        {
+            if (cfg.exposure!=0)
+            {
+                unsigned int requestedCeiling = cfg.exposure + LIGHT_ON_CEILING_MARGIN_IN_MICROSECONDS;
+                if (requestedCeiling > LIGHT_ON_CEILING_CONTROLLER_HARD_MAX)
+                   { fprintf(stderr,YELLOW "Exposure %u us needs a %u us light window; the controller caps at %u us\n" NORMAL,
+                             cfg.exposure,requestedCeiling,LIGHT_ON_CEILING_CONTROLLER_HARD_MAX); }
+                arduino_setLightOnCeiling(&arduino_config,requestedCeiling);
+            }
+
+            if (arduino_controllerSupportsRepeatLimit(&arduino_config))
+            {
+                arduino_queryPowerRails(&arduino_config); //logs rail state; warns if the camera is unpowered
+                arduino_setMaxConsecutiveActivations(&arduino_config,cfg.maxConsecutiveActivations);
+                unsigned char allowed[LIGHTS_ON_CONTROLLER]={0};
+                int allowedLen = lightBuildAllowedList(&cfg,allowed,LIGHTS_ON_CONTROLLER);
+                if (allowedLen>0) { arduino_sendLightSchedule(&arduino_config,allowed,allowedLen); }
+            }
+            else if (cfg.maxConsecutiveActivations!=0)
+               { fprintf(stderr,YELLOW "--maxrepeat needs controller firmware >= 2.2; ignoring it\n" NORMAL); }
+
+            if (cfg.exposure_locked_light)
+            {
+                arduino_enterExposureLockedMode(&arduino_config);
+                cfg.manual_trigger_light = 0;
+                camera_config.callback   = NULL; //the controller steps the lights itself
+            }
+        }
+    }
+
     if (cfg.useTeensy)   {
                       /*
                       char *teensy_port = find_teensy_port();
@@ -935,6 +1008,12 @@ int main(int argc, char **argv)
     }
 
     closeDisconnectViewer();
+
+    //Ethernet controller dropped mid-run (board reset, cable pulled, port taken): the reader
+    //thread ended the capture; show why before exiting. Not shown after Ctrl+C.
+    if (ethernetController && !stop &&
+        (arduino_config.connectionLost || arduino_config.controllerVersionMajor==0))
+       { showStartupFailureImage(ETH_DISCONNECT_IMAGE); }
 
     //Restore terminal to its former state
     if (cfg.interceptKeyboard)
