@@ -75,8 +75,8 @@ int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context);
 
 /** Send "N<n>": the controller never fires the same COB on more than n exposures in a row.
  *  When the limit is hit it fires the next different COB of its schedule instead, or leaves
- *  the exposure dark if the schedule holds no other COB. 0 or anything above
- *  LIGHT_MAX_CONSECUTIVE_ACTIVATIONS is sent as LIGHT_MAX_CONSECUTIVE_ACTIVATIONS.
+ *  the exposure dark if the schedule holds no other COB. 0 removes the limit (the
+ *  firmware's default: unlimited).
  *  @return 1 if the command was written, 0 otherwise (including unsupported firmware). */
 int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations);
 

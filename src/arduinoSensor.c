@@ -471,8 +471,6 @@ int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned
   if (!context->global->useArduino) { return 0; }
   if (!arduino_controllerSupportsRepeatLimit(context)) { return 0; }
 
-  if (activations==0)                                   { activations = LIGHT_MAX_CONSECUTIVE_ACTIVATIONS; }
-  if (activations>LIGHT_MAX_CONSECUTIVE_ACTIVATIONS)    { activations = LIGHT_MAX_CONSECUTIVE_ACTIVATIONS; }
 
   char buffer[32]={0};
   int len = snprintf(buffer,sizeof(buffer),"N%u\n",activations);
@@ -482,7 +480,8 @@ int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned
     fprintf(stderr,RED "Failed setting the consecutive-activation limit (%d)\n" NORMAL,n);
     return 0;
   }
-  fprintf(stderr,"Controller will fire the same light at most %u exposures in a row\n",activations);
+  if (activations==0) { fprintf(stderr,"Controller consecutive-activation limit removed\n"); } else
+                      { fprintf(stderr,"Controller will fire the same light at most %u exposures in a row\n",activations); }
   return 1;
 }
 
