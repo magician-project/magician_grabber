@@ -60,6 +60,26 @@ typedef struct
     char reconnectPath[256];        /**< Stable /dev/serial/by-id path when available. */
     unsigned int reconnectCount;    /**< Successful reconnects after the first connection. */
     char isNetwork;                 /**< 1 when serial_fd is a TCP socket to the controller (--controller-ip), not a serial port. */
+
+    /** Last power report from the controller ("P:..." reply to 'p', firmware >= 2.2), parsed
+     *  by the receive thread. Read powerReportCount before and after to see a new report.
+     *  Rail fields: 1 on, 0 off, -1 unknown. "Readback" is the MCP23018 enable pin, not a
+     *  measured voltage: the board has no rail voltage sense (see PLAN.md H8). */
+    struct
+    {
+        unsigned long count;        /**< Reports received so far; 0 = none yet. */
+        unsigned long timestamp;    /**< Host time (us) of the last report. */
+        char error;                 /**< 1 if the last reply was "P:ERR..." (board did not refresh in time). */
+        signed char cameraRailCommanded;  /**< 11.5 V rail (camera power via J16), as commanded. */
+        signed char cameraRailReadback;   /**< 11.5 V rail enable pin as read back. */
+        signed char rail5VCommanded;      /**< 5 V rail (Pico VSYS without USB, panel I/O), as commanded. */
+        signed char rail5VReadback;       /**< 5 V rail enable pin as read back. */
+        signed char usbVbus;              /**< Board sees USB VBUS (only then may the 5 V rail be switched off). */
+        signed char cycling;              /**< A camera power-cycle ('PR') is in progress. */
+        signed char expanderPresent;      /**< MCP23018 answered; if 0, rail commands do nothing. */
+        unsigned int adc3MilliVolts;      /**< Raw GP29/ADC3 pin voltage (VSYS/3 on an official Pico 2 only). */
+        unsigned int refusedCount;        /**< 5 V-off requests the board refused (no USB). */
+    } power;
 } ArduinoSerialConfig;
 
 /** Does this controller understand the Rev 1.33 multi-character commands (e/E/S)?
@@ -80,6 +100,33 @@ int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context);
  *  firmware's default: unlimited).
  *  @return 1 if the command was written, 0 otherwise (including unsupported firmware). */
 int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations);
+
+/* ---------------------------------------------------------------------------
+ *  Power rails (firmware >= 2.2). Not used by the capture flow yet; available
+ *  for tools and future recovery logic. All return 1 if the command was written,
+ *  0 otherwise (no controller, connection not ready, or firmware without rail
+ *  commands). Results arrive asynchronously in context->power, so follow a change
+ *  with arduino_queryPowerRails() + arduino_waitPowerReport() to confirm it.
+ * --------------------------------------------------------------------------- */
+
+/** Does the controller support the rail commands (P5/P11/PR/p)? Firmware >= 2.2. */
+int arduino_controllerSupportsPowerRails(const ArduinoSerialConfig * context);
+
+/** Camera power (11.5 V rail, J16) on or off ("P11,1" / "P11,0"). The board turns its lights
+ *  off before the rail goes down. The camera connection will drop while it is unpowered. */
+int arduino_setCameraPower(ArduinoSerialConfig * context, int on);
+
+/** Power-cycle the camera: rail off for offMilliseconds (board clamps to 50..10000), then back
+ *  on by itself ("PR<ms>"). Meant for recovering a hung camera; the GigE side must reconnect. */
+int arduino_powerCycleCamera(ArduinoSerialConfig * context, unsigned int offMilliseconds);
+
+/** 5 V rail on or off ("P5,1" / "P5,0"). Without USB this rail is the board's own supply, so
+ *  the board refuses "off" in that case (counted in power.refusedCount). */
+int arduino_set5VRail(ArduinoSerialConfig * context, int on);
+
+/** Wait until a power report newer than `afterCount` arrives (pass context->power.count read
+ *  before sending the query). @return 1 on a new report, 0 on timeout. */
+int arduino_waitPowerReport(ArduinoSerialConfig * context, unsigned long afterCount, unsigned int timeoutMs);
 
 /** Send "p" (firmware >= 2.2). The one-line "P:..." reply is logged by the receive thread,
  *  with a warning when the camera power rail (11.5 V) reads as off. Never written to CSV.

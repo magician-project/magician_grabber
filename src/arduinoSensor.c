@@ -548,15 +548,103 @@ int arduino_controllerSupportsRepeatLimit(const ArduinoSerialConfig * context)
   return 0; //the 1.x Nano/Pico firmware has no 'N' command
 }
 
+int arduino_controllerSupportsPowerRails(const ArduinoSerialConfig * context)
+{
+  return arduino_controllerSupportsRepeatLimit(context); //rail commands arrived with 2.2
+}
+
+/* Write one rail command line under the port lock. Older firmware would discard these
+ * lines as unknown commands, but they are never sent there anyway. */
+static int arduino_sendPowerCommand(ArduinoSerialConfig * context, const char * line)
+{
+  if (context==0)                                     { return 0; }
+  if ( (context->global==0) || (!context->global->useArduino) ) { return 0; }
+  if (!arduino_controllerSupportsPowerRails(context)) { return 0; }
+
+  size_t len = strlen(line);
+  pthread_mutex_lock(&serialFdMutex);
+  if ( (!context->serialReady) || (context->serial_fd<0) )
+  {
+    pthread_mutex_unlock(&serialFdMutex);
+    return 0;
+  }
+  int n = write(context->serial_fd, line, len);
+  pthread_mutex_unlock(&serialFdMutex);
+  if (n!=(int)len)
+  {
+    fprintf(stderr,RED "Failed sending power command \"%.*s\" to %s\n" NORMAL,(int)len-1,line,context->port_name);
+    return 0;
+  }
+  return 1;
+}
+
 int arduino_queryPowerRails(ArduinoSerialConfig * context)
 {
-  if (context==0)                 { return 0; }
-  if (!context->global->useArduino) { return 0; }
-  if (!arduino_controllerSupportsRepeatLimit(context)) { return 0; } //'p' arrived with 2.2
+  return arduino_sendPowerCommand(context,"p\n");
+}
 
-  char buffer[]={"p\n"};
-  int n = write(context->serial_fd, buffer, sizeof(buffer)-1);
-  return (n==(int)(sizeof(buffer)-1));
+int arduino_setCameraPower(ArduinoSerialConfig * context, int on)
+{
+  int ok = arduino_sendPowerCommand(context, on ? "P11,1\n" : "P11,0\n");
+  if (ok) { fprintf(stderr,"Camera power %s requested on %s\n", on ? "ON" : "OFF", context->port_name); }
+  return ok;
+}
+
+int arduino_powerCycleCamera(ArduinoSerialConfig * context, unsigned int offMilliseconds)
+{
+  char line[32];
+  snprintf(line,sizeof(line),"PR%u\n",offMilliseconds);
+  int ok = arduino_sendPowerCommand(context,line);
+  if (ok) { fprintf(stderr,"Camera power-cycle (%u ms off) requested on %s\n",offMilliseconds,context->port_name); }
+  return ok;
+}
+
+int arduino_set5VRail(ArduinoSerialConfig * context, int on)
+{
+  int ok = arduino_sendPowerCommand(context, on ? "P5,1\n" : "P5,0\n");
+  if (ok) { fprintf(stderr,"5 V rail %s requested on %s\n", on ? "ON" : "OFF", context->port_name); }
+  return ok;
+}
+
+int arduino_waitPowerReport(ArduinoSerialConfig * context, unsigned long afterCount, unsigned int timeoutMs)
+{
+  if (context==0) { return 0; }
+  for (unsigned int waited=0; waited<timeoutMs; waited+=5)
+  {
+    if (context->power.count > afterCount) { return 1; }
+    usleep(5000);
+  }
+  return (context->power.count > afterCount);
+}
+
+/* Parse "P:11V=c/r,5V=c/r,VBUS=v,ADC3=<mV>mV,CYCLE=c,MCP=m,REFUSED=n" or "P:ERR=..." into
+ * context->power. Fields that do not parse stay -1 (unknown). */
+static void arduino_parsePowerReport(ArduinoSerialConfig * context, const char * line, unsigned long timestamp)
+{
+  #define RAIL_DIGIT(ch) ( ((ch)=='1') ? 1 : (((ch)=='0') ? 0 : -1) )
+  char c11='?', r11='?', c5='?', r5='?';
+  int vbus=-1, cycling=-1, mcp=-1;
+  unsigned int adc3=0, refused=0;
+
+  context->power.error = (strncmp(line,"P:ERR",5)==0);
+  if (!context->power.error)
+  {
+    sscanf(line,"P:11V=%c/%c,5V=%c/%c,VBUS=%d,ADC3=%umV,CYCLE=%d,MCP=%d,REFUSED=%u",
+           &c11,&r11,&c5,&r5,&vbus,&adc3,&cycling,&mcp,&refused);
+  }
+  context->power.cameraRailCommanded = RAIL_DIGIT(c11);
+  context->power.cameraRailReadback  = RAIL_DIGIT(r11);
+  context->power.rail5VCommanded     = RAIL_DIGIT(c5);
+  context->power.rail5VReadback      = RAIL_DIGIT(r5);
+  context->power.usbVbus             = (signed char) vbus;
+  context->power.cycling             = (signed char) cycling;
+  context->power.expanderPresent     = (signed char) mcp;
+  context->power.adc3MilliVolts      = adc3;
+  context->power.refusedCount        = refused;
+  context->power.timestamp           = timestamp;
+  __sync_synchronize();               //fields before count: a reader that sees the new count sees them
+  context->power.count++;
+  #undef RAIL_DIGIT
 }
 
 int arduino_setMaxConsecutiveActivations(ArduinoSerialConfig * context, unsigned int activations)
@@ -1232,11 +1320,12 @@ void *arduino_thread(void *arg)
                  {
                    //Power-rail report ("P:11V=c/r,5V=c/r,...", reply to 'p', firmware >= 2.2).
                    //Not CSV data. c = commanded, r = enable-pin readback on the board.
-                   char c11='?', r11='?';
-                   int parsed = (sscanf(lineBuffer,"P:11V=%c/%c",&c11,&r11)==2);
-                   if (parsed && (r11=='0'))
+                   arduino_parsePowerReport(config,lineBuffer,receptionTime);
+                   if (config->power.error)
+                     { fprintf(stderr,YELLOW "Controller on %s: power query failed (%s)\n" NORMAL,config->port_name,lineBuffer); }
+                   else if (config->power.cameraRailReadback==0)
                      { fprintf(stderr,YELLOW "Controller on %s: CAMERA POWER RAIL IS OFF (%s)\n" NORMAL,config->port_name,lineBuffer); }
-                   else if (parsed && (c11!=r11))
+                   else if (config->power.cameraRailCommanded!=config->power.cameraRailReadback)
                      { fprintf(stderr,YELLOW "Controller on %s: camera rail readback differs from command (%s)\n" NORMAL,config->port_name,lineBuffer); }
                    else
                      { fprintf(stderr,"Controller on %s power: %s\n",config->port_name,lineBuffer); }
