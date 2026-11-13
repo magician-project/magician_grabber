@@ -62,6 +62,10 @@ static char arduinoUsePatternLight[]  = {"t\n"};
  *  the controller enforces its own copy and never trusts this one. Keep in sync. */
 #define LIGHT_ON_CEILING_CONTROLLER_HARD_MAX 1000
 
+/* Pico 2 controller over Ethernet (--controller-ip / --arduino-ip): the firmware's W5500
+ * Telnet server. Its static address is 192.168.137.64/24 (network_manager.cpp). */
+#define CONTROLLER_DEFAULT_TCP_PORT 23
+
 /** COBs wired to the controller board. They are 0-indexed internally and 1-indexed
  *  everywhere the user can see them, matching the "1".."6" wire protocol. Mirror of
  *  NUMBER_OF_LIGHTS in the firmware. */
@@ -100,6 +104,8 @@ typedef struct
     char useRAM;             /**< When 1, write output to tmpfs/ (RAM-backed) to avoid disk bottleneck at high frame rates. */
     char useArduino;         /**< When 1, start the Arduino serial thread (distance sensor + lighting controller). */
     char isPico2;            /**< When 1, the serial board is the experimental RP2350/Pico 2 (native USB-CDC); keep DTR asserted so it transmits. Default 0 = legacy AVR Nano. */
+    char controllerHost[64]; /**< --controller-ip / --arduino-ip: reach the Pico 2 controller over TCP (its W5500 Telnet server) instead of USB serial. Empty = use the serial path in arduinoPath. */
+    int  controllerPort;     /**< TCP port for controllerHost; 0 = CONTROLLER_DEFAULT_TCP_PORT. */
     char useTeensy;          /**< When 1, start the Teensy serial thread (accelerometer). */
     char useCamera;          /**< When 1, start the GigE camera thread. */
     char useATIForce;        /**< When 1, start the ATI NetFT force/torque thread. */
@@ -456,6 +462,9 @@ static void print_help()
     printf("  -o, --output <path>       Set the output directory.\n");
     printf("  --arduino <path>          Set the path to arduino (def. /dev/ttyACM0).\n");
     printf("  --pico2                   Serial board is the experimental RP2350/Pico 2 (keep DTR asserted for its USB-CDC).\n");
+    printf("  --controller-ip <ip[:port]> Reach the Pico 2 controller over Ethernet instead of USB\n");
+    printf("                            (e.g. 192.168.137.64, default port %d). Same commands and CSV.\n",CONTROLLER_DEFAULT_TCP_PORT);
+    printf("  --arduino-ip <ip[:port]>  Same as --controller-ip.\n");
     printf("  --teensy <path>           Set the path to teensy (def. /dev/ttyACM1).\n");
     printf("  --nooutput                Disable file output (redirect to /dev/null).\n");
     printf("  --countdown <seconds>     Perform a countdown before starting.\n");
@@ -561,6 +570,32 @@ static int parse_arguments(GlobalConfig *cfg,int argc, char **argv)
         if (strcmp(argv[i],"--noarduino")==0)
         {
               cfg->useArduino = 0;
+        } else
+        if ( (strcmp(argv[i],"--controller-ip")==0) || (strcmp(argv[i],"--arduino-ip")==0) )
+        {
+            if (argc>i+1)
+            {
+              //"host" or "host:port". Only the Pico 2 has an Ethernet port, so this implies --pico2.
+              char host[64]={0};
+              snprintf(host,sizeof(host),"%s",argv[i+1]);
+              int port = CONTROLLER_DEFAULT_TCP_PORT;
+              char *colon = strrchr(host,':');
+              if (colon!=0) { *colon = 0; port = atoi(colon+1); }
+              if ( (host[0]==0) || (port<=0) || (port>65535) )
+              {
+                fprintf(stderr,RED "%s: expected <ip[:port]>, got \"%s\"\n" NORMAL,argv[i],argv[i+1]);
+                exit(1);
+              } else
+              {
+                snprintf(cfg->controllerHost,sizeof(cfg->controllerHost),"%s",host);
+                cfg->controllerPort = port;
+                cfg->useArduino = 1;
+                cfg->isPico2    = 1;
+                fprintf(stderr,"Controller will be reached over Ethernet at %s:%d\n",host,port);
+              }
+            }
+            else
+            { fprintf(stderr,"Failed setting controller address, not enough arguments! \n"); }
         } else
         if (strcmp(argv[i],"--pico2")==0)
         {

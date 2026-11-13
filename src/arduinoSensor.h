@@ -59,6 +59,7 @@ typedef struct
     char serialReady;               /**< Only send frame commands after startup commands succeeded. */
     char reconnectPath[256];        /**< Stable /dev/serial/by-id path when available. */
     unsigned int reconnectCount;    /**< Successful reconnects after the first connection. */
+    char isNetwork;                 /**< 1 when serial_fd is a TCP socket to the controller (--controller-ip), not a serial port. */
 } ArduinoSerialConfig;
 
 /** Does this controller understand the Rev 1.33 multi-character commands (e/E/S)?

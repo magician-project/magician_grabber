@@ -368,8 +368,10 @@ int main (int argc, char **argv)
     if (cfg.useArduino)
     {
         //Wait briefly for the version banner requested by arduino_startStream().
+        //Over Ethernet the reply also waits for the TCP connect (up to 3 s), so allow longer.
         unsigned int waited = 0;
-        while ( (arduino_config.controllerVersionMajor==0) && (waited<200) && (cfg.keep_running) )
+        unsigned int maxWait = (cfg.controllerHost[0]!=0) ? 500 : 200; //x 10 ms
+        while ( (arduino_config.controllerVersionMajor==0) && (waited<maxWait) && (cfg.keep_running) )
              { usleep(10000); waited++; }
 
         int modernController = arduino_controllerSupportsExposureLock(&arduino_config);
@@ -433,24 +435,28 @@ int main (int argc, char **argv)
              { arduino_setLightOnCeiling(&arduino_config,requestedCeiling); }
         }
 
-        //Consecutive-activation limit ('N', firmware >= 2.2). The firmware already
-        //defaults to its hard maximum, so only send it when the user asked for less.
-        if (cfg.maxConsecutiveActivations!=0)
+        //Firmware >= 2.2 keeps 'N' and 'S' in RAM until it is reset, so a previous run's
+        //settings would otherwise carry over into this one. State both explicitly on every
+        //run: the limit (0 = unlimited when --maxrepeat is absent) and the schedule (every
+        //COB --skip left in play, i.e. all six when --skip is absent). The schedule also
+        //matters on the per-frame paths: when the 'N' limit swaps in another COB, the
+        //firmware picks it from this schedule, so a substitute is never an excluded COB.
+        //The polarization driver uploads its own schedule, so it is left alone here.
+        int stateful22 = arduino_controllerSupportsRepeatLimit(&arduino_config);
+        if (stateful22)
         {
-          if (!arduino_setMaxConsecutiveActivations(&arduino_config,cfg.maxConsecutiveActivations))
-             { fprintf(stderr,YELLOW "--maxrepeat needs controller firmware >= 2.2; ignoring it\n" NORMAL); }
+          arduino_setMaxConsecutiveActivations(&arduino_config,cfg.maxConsecutiveActivations);
+          if (!cfg.polarizationLights)
+          {
+            unsigned char allowed[LIGHTS_ON_CONTROLLER]={0};
+            int allowedLen = lightBuildAllowedList(&cfg,allowed,LIGHTS_ON_CONTROLLER);
+            if (allowedLen>0)
+               { arduino_sendLightSchedule(&arduino_config,allowed,allowedLen); }
+          }
         }
-
-        //When the 'N' limit swaps in another COB, the firmware picks it from its schedule.
-        //Upload the --skip list on the per-frame paths too, so a substitute is never an
-        //excluded COB. (The exposure-locked path uploads it below.)
-        if ( (cfg.lightSkipMask!=0) && (!cfg.exposure_locked_light) && (!cfg.polarizationLights) &&
-             arduino_controllerSupportsRepeatLimit(&arduino_config) )
+        else if (cfg.maxConsecutiveActivations!=0)
         {
-          unsigned char allowed[LIGHTS_ON_CONTROLLER]={0};
-          int allowedLen = lightBuildAllowedList(&cfg,allowed,LIGHTS_ON_CONTROLLER);
-          if (allowedLen>0)
-             { arduino_sendLightSchedule(&arduino_config,allowed,allowedLen); }
+          fprintf(stderr,YELLOW "--maxrepeat needs controller firmware >= 2.2; ignoring it\n" NORMAL);
         }
 
         if (modernController && cfg.exposure_locked_light)
@@ -462,7 +468,7 @@ int main (int argc, char **argv)
           //is simply leaving it out of the upload — no per-frame work and nothing that
           //can drift. The polarization driver builds and uploads its own schedule (and
           //is handed the same mask), so it is left to do that itself.
-          if ( (cfg.lightSkipMask!=0) && (!cfg.polarizationLights) )
+          if ( (cfg.lightSkipMask!=0) && (!cfg.polarizationLights) && (!stateful22) ) //2.2+: already sent above
           {
             unsigned char schedule[LIGHTS_ON_CONTROLLER]={0};
             int scheduleLen = lightBuildAllowedList(&cfg,schedule,LIGHTS_ON_CONTROLLER);

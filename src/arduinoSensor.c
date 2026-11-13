@@ -19,6 +19,13 @@
 
 #include "common.h"
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <signal.h>
 
 #include "arduinoSensor.h"
 
@@ -210,6 +217,67 @@ int serialport_close( int fd )
     return close( fd );
 }
 
+/* Open a TCP connection to the controller's Telnet server (--controller-ip).
+ * The socket is left non-blocking, which makes it behave like the serial port opened
+ * with VMIN=0/VTIME=0: read() returns at once, with -1/EAGAIN when no data is waiting,
+ * so the receive loop polls it exactly as it polls the serial fd. The one difference is
+ * that read() returning 0 means the board closed the connection (see arduino_thread).
+ * @return socket fd, or -1 on failure. */
+static int controller_tcp_connect(const char *host, int port, int timeoutMs)
+{
+    char portText[16];
+    snprintf(portText,sizeof(portText),"%d",port);
+
+    struct addrinfo hints; memset(&hints,0,sizeof(hints));
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo *res = 0;
+    int gai = getaddrinfo(host,portText,&hints,&res);
+    if (gai!=0)
+    {
+        fprintf(stderr,RED "Cannot resolve controller address %s: %s\n" NORMAL,host,gai_strerror(gai));
+        return -1;
+    }
+
+    int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (fd<0) { freeaddrinfo(res); return -1; }
+
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    int rc = connect(fd, res->ai_addr, res->ai_addrlen);
+    freeaddrinfo(res);
+
+    if ( (rc<0) && (errno==EINPROGRESS) )
+    {
+        fd_set wfds; FD_ZERO(&wfds); FD_SET(fd,&wfds);
+        struct timeval tv = { timeoutMs/1000, (timeoutMs%1000)*1000 };
+        rc = select(fd+1, 0, &wfds, 0, &tv);
+        if (rc==1)
+        {
+            int soError = 0; socklen_t len = sizeof(soError);
+            getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len);
+            if (soError!=0) { errno = soError; rc = -1; } else { rc = 0; }
+        }
+        else if (rc==0) { errno = ETIMEDOUT; rc = -1; }
+        else            { rc = -1; }
+    }
+    if (rc<0)
+    {
+        fprintf(stderr,RED "Cannot connect to controller at %s:%d: %s\n" NORMAL,host,port,strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    //A write to a socket the board has closed raises SIGPIPE, which would kill the whole
+    //grabber (a serial port never does this). Ignore it so such a write fails with EPIPE
+    //and goes through the same error handling as a failed serial write.
+    signal(SIGPIPE, SIG_IGN);
+
+    //Commands are one to a few bytes; send each immediately instead of letting Nagle batch them.
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    return fd;
+}
+
 
 
 
@@ -350,14 +418,29 @@ static int arduino_reconnect_stream(ArduinoSerialConfig *context)
 int arduino_startStream(ArduinoSerialConfig * context)
 {
   int pico2Mode = (context->global!=0) ? context->global->isPico2 : 0;
-  context->serial_fd = serialport_init(context->port_name,context->baud_rate,pico2Mode,0);
+  int isController = (strstr(context->csv_name,"controller")!=0);
+
+  if ( isController && (context->global!=0) && (context->global->controllerHost[0]!=0) )
+  {
+    //Ethernet path (--controller-ip / --arduino-ip). Only the controller has one; the
+    //Teensy shares this function and always stays on USB.
+    int port = context->global->controllerPort ? context->global->controllerPort : CONTROLLER_DEFAULT_TCP_PORT;
+    snprintf(context->port_name,sizeof(context->port_name),"tcp://%s:%d",context->global->controllerHost,port);
+    context->serial_fd = controller_tcp_connect(context->global->controllerHost,port,3000);
+    if (context->serial_fd<0) { exit(1); }
+    context->isNetwork = 1;
+    fprintf(stderr,GREEN "Connected to controller at %s\n" NORMAL,context->port_name);
+  } else
+  {
+    context->serial_fd = serialport_init(context->port_name,context->baud_rate,pico2Mode,0);
+  }
 
   //Ask the lighting controller for its version banner first. The reply lands
   //asynchronously in the read loop below and gates every multi-character command
   //we might send afterwards: a pre-1.33 controller would execute the individual
   //characters of "S031425" as separate commands and end up with its lights in an
   //arbitrary state. The Teensy shares this start path but has no such protocol.
-  if (strstr(context->csv_name,"controller")!=0)
+  if (isController)
      { arduino_probeControllerVersion(context); }
 
   //Send Start Command!
@@ -1175,7 +1258,20 @@ void *arduino_thread(void *arg)
             }
         }
         }
-        else if (n < 0 && readError != EINTR && readError != EAGAIN)
+        else if ( (n == 0) && config->isNetwork )
+        {
+          //On a socket a 0-byte read is end-of-stream: the board closed the connection
+          //(rebooted, cable pulled, or another client took its single Telnet slot).
+          fprintf(stderr,RED "Controller at %s closed the Ethernet connection.\n" NORMAL,config->port_name);
+          pthread_mutex_lock(&serialFdMutex);
+          config->connectionLost = 1;
+          config->serialReady = 0;
+          if (!config->autoReconnect) { *config->keep_running = 0; }
+          pthread_mutex_unlock(&serialFdMutex);
+          if (!config->autoReconnect) { break; }
+          continue;
+        }
+        else if (n < 0 && readError != EINTR && readError != EAGAIN && readError != EWOULDBLOCK)
         {
           fprintf(stderr,"Serial read from %s failed: %s.\n",
                   config->port_name,strerror(readError));
