@@ -1322,6 +1322,10 @@ void *arduino_thread(void *arg)
                    //frame so both files stay timestamp-aligned. controller.csv is left untouched.
                    process_distance_zone_data(config,enabledFileOutput,lastFrameTimestamp,lineBuffer,lineIndex);
                  } else
+                 if ( (lineBuffer[0]=='T') && (lineBuffer[1]==':') )
+                 {
+                   //ToF 8x8 zone dump (reply to 'T1'..'T3', firmware >= 2.2). Not CSV data; dropped.
+                 } else
                  if ( (lineBuffer[0]=='P') && (lineBuffer[1]==':') )
                  {
                    //Power-rail report ("P:11V=c/r,5V=c/r,...", reply to 'p', firmware >= 2.2).
